@@ -58,18 +58,6 @@ class _FakeSimulator:
         return self._backend
 
 
-def _autospec_simulator(name):
-    """
-    A simulator-interface autospec stand-in for use through Builtins, whose
-    _add_files()/_add_vhdl_logging() call several other simulator-interface
-    methods (supports_vhdl_contexts(), supports_vhdl_call_paths(), ...) that
-    are irrelevant to what these tests check, so let them return truthy mocks.
-    """
-    simulator = mock.create_autospec(SimulatorInterface, instance=True)
-    simulator.name = name
-    return simulator
-
-
 # The complete VHPIDIRECT contract between python_bridge_pkg.vhd.in and
 # native/*.c. The generated VHDL and the built library must agree on it
 # exactly: nothing else may be exported.
@@ -179,6 +167,39 @@ class TestManifest(unittest.TestCase):
             self.assertNotIn(f"vhdl/src/{name}", includes)
 
 
+class TestForeignLanguageInterfaces(unittest.TestCase):
+    """
+    The table deciding how a simulator is served. VUnit only says which simulator was
+    selected, so the package has to know the foreign language interface of each of them.
+    """
+
+    def test_every_supported_simulator_has_its_interface(self):
+        self.assertEqual(
+            vunit_python_bridge.FOREIGN_LANGUAGE_INTERFACES,
+            {
+                "nvc": "VHPIDIRECT_NVC",
+                "ghdl": "VHPIDIRECT_GHDL",
+                "modelsim": "FLI",
+                "rivierapro": "VHPI",
+                "activehdl": "VHPI",
+            },
+        )
+
+    def test_the_simulators_the_bridge_serves_are_the_ones_it_is_set_up_for(self):
+        # Everything that is not the VHPI application is served by the bridge, which has
+        # to know the same simulators.
+        served_by_the_bridge = {
+            name
+            for name, interface in vunit_python_bridge.FOREIGN_LANGUAGE_INTERFACES.items()
+            if interface != "VHPI"
+        }
+        self.assertEqual(served_by_the_bridge, set(bridge_setup.BRIDGE_SIMULATORS))
+
+    def test_the_message_names_every_simulator(self):
+        for simulator in ("NVC", "GHDL", "Questa/ModelSim", "Riviera-PRO", "Active-HDL"):
+            self.assertIn(simulator, vunit_python_bridge.SUPPORTED_SIMULATORS)
+
+
 class TestPackageSetup(unittest.TestCase):
     """
     vunit_python_bridge.setup(context): the foreign language interface of the selected
@@ -196,10 +217,12 @@ class TestPackageSetup(unittest.TestCase):
         return _FakeContext(simulator_class, self.tempdir / "out", self.run_script)
 
     @staticmethod
-    def _simulator_with_flis(name, flis):
+    def _simulator(name):
+        """
+        A simulator interface class as the setup function sees it, that is by name.
+        """
         simulator = mock.Mock()
         simulator.name = name
-        simulator.supported_foreign_language_interfaces.return_value = flis
         return simulator
 
     def _added_names(self, context):
@@ -210,15 +233,18 @@ class TestPackageSetup(unittest.TestCase):
             vunit_python_bridge.setup(self._context(None))
 
     def test_rejects_unsupported_simulator(self):
-        context = self._context(self._simulator_with_flis("some_simulator", {"SOME_OTHER_INTERFACE"}))
-        with self.assertRaisesRegex(RuntimeError, "supports none of them") as ctx:
+        context = self._context(self._simulator("some_simulator"))
+        with self.assertRaisesRegex(RuntimeError, "no foreign language interface for some_simulator") as ctx:
             vunit_python_bridge.setup(context)
-        # The message names the interfaces so a user knows what is supported.
-        for interface in ("VHPI", "FLI", "VHPIDIRECT_NVC", "VHPIDIRECT_GHDL"):
-            self.assertIn(interface, str(ctx.exception))
+        # The message names the simulators so a user knows what is supported.
+        self.assertIn(vunit_python_bridge.SUPPORTED_SIMULATORS, str(ctx.exception))
 
     def test_vhpi_adds_python_pkg_vhpi_and_builds_the_application(self):
-        simulator = self._simulator_with_flis("rivierapro", {"VHPI"})
+        for name in ("rivierapro", "activehdl"):
+            self._check_vhpi_application_built(name)
+
+    def _check_vhpi_application_built(self, name):
+        simulator = self._simulator(name)
         context = self._context(simulator)
         with mock.patch("vunit_python_bridge.bridge.setup") as setup_mock, mock.patch(
             "vunit_python_bridge.foreign_application.setup_vhpi_application"
@@ -233,7 +259,7 @@ class TestPackageSetup(unittest.TestCase):
         self.assertEqual(context.hooks, {})
 
     def test_application_build_failure_is_reported(self):
-        context = self._context(self._simulator_with_flis("rivierapro", {"VHPI"}))
+        context = self._context(self._simulator("rivierapro"))
         with mock.patch(
             "vunit_python_bridge.foreign_application.setup_vhpi_application",
             side_effect=RuntimeError("no compiler"),
@@ -272,14 +298,15 @@ class TestPackageSetup(unittest.TestCase):
         return context
 
     def test_vhpidirect_adds_the_bridge_files(self):
-        self._check_bridge_files_added(self._simulator_with_flis("nvc", {"VHPIDIRECT_NVC"}))
+        for name in ("nvc", "ghdl"):
+            self._check_bridge_files_added(self._simulator(name))
 
     def test_fli_adds_the_bridge_files(self):
         # Questa/ModelSim is served by the bridge too, through native/fli.c.
-        self._check_bridge_files_added(self._simulator_with_flis("modelsim", {"FLI"}))
+        self._check_bridge_files_added(self._simulator("modelsim"))
 
     def test_fli_uses_the_bridge_not_the_vhpi_application(self):
-        context = self._context(self._simulator_with_flis("modelsim", {"FLI"}))
+        context = self._context(self._simulator("modelsim"))
         with mock.patch("vunit_python_bridge.bridge.setup", return_value=self._fake_bridge()), mock.patch(
             "vunit_python_bridge.foreign_application.setup_vhpi_application"
         ) as vhpi_mock:
@@ -287,7 +314,7 @@ class TestPackageSetup(unittest.TestCase):
         vhpi_mock.assert_not_called()
 
     def test_hooks_are_registered_for_every_simulator_the_bridge_serves(self):
-        context = self._check_bridge_files_added(self._simulator_with_flis("nvc", {"VHPIDIRECT_NVC"}))
+        context = self._check_bridge_files_added(self._simulator("nvc"))
         self.assertEqual(sorted(context.hooks), ["ghdl", "modelsim", "nvc"])
         self.assertIsNotNone(context.hooks["nvc"]["run_flags"])
         self.assertIsNotNone(context.hooks["ghdl"]["elab_flags"])
@@ -297,7 +324,7 @@ class TestPackageSetup(unittest.TestCase):
         self.assertIsNone(context.hooks["modelsim"]["run_env"])
 
     def test_bridge_setup_failure_is_reported(self):
-        context = self._context(self._simulator_with_flis("nvc", {"VHPIDIRECT_NVC"}))
+        context = self._context(self._simulator("nvc"))
         with mock.patch(
             "vunit_python_bridge.bridge.setup",
             side_effect=native_library.PythonBridgeError("no compiler"),

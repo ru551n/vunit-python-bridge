@@ -33,8 +33,20 @@ from pathlib import Path
 
 VHDL_PATH = Path(__file__).parent.resolve() / "vhdl" / "src"
 
-# Foreign language interfaces the package can be implemented with
-SUPPORTED_FOREIGN_LANGUAGE_INTERFACES = {"VHPI", "FLI", "VHPIDIRECT_NVC", "VHPIDIRECT_GHDL"}
+# The foreign language interface implementing the package for a simulator. VUnit says which
+# simulator was selected, the package says how it is served: NVC and GHDL both go through
+# VHPIDIRECT but bind the library differently, Questa/ModelSim goes through the FLI and
+# Riviera-PRO/Active-HDL through a VHPI application of their own.
+FOREIGN_LANGUAGE_INTERFACES = {
+    "nvc": "VHPIDIRECT_NVC",
+    "ghdl": "VHPIDIRECT_GHDL",
+    "modelsim": "FLI",
+    "rivierapro": "VHPI",
+    "activehdl": "VHPI",
+}
+
+# The simulators of the table, named as a user knows them
+SUPPORTED_SIMULATORS = "NVC, GHDL, Questa/ModelSim, Riviera-PRO or Active-HDL"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -53,33 +65,31 @@ def setup(context):
     from .native_library import PythonBridgeError
     from . import simulator_hooks
 
-    simulator_class = context.simulator_class
-    if simulator_class is None:
+    simulator_name = context.simulator_name
+    if simulator_name is None:
         raise RuntimeError(
-            "The vunit-python-bridge package requires a simulator supporting one of "
-            f"{', '.join(sorted(SUPPORTED_FOREIGN_LANGUAGE_INTERFACES))} but no simulator was found"
+            f"The vunit-python-bridge package requires {SUPPORTED_SIMULATORS} but no simulator was found"
         )
 
-    supported = set(simulator_class.supported_foreign_language_interfaces())
-    if not SUPPORTED_FOREIGN_LANGUAGE_INTERFACES & supported:
+    interface = FOREIGN_LANGUAGE_INTERFACES.get(simulator_name)
+    if interface is None:
         raise RuntimeError(
-            "The vunit-python-bridge package requires support for one of "
-            f"{', '.join(sorted(SUPPORTED_FOREIGN_LANGUAGE_INTERFACES))} "
-            f"but {simulator_class.name} supports none of them"
+            f"The vunit-python-bridge package requires {SUPPORTED_SIMULATORS}, "
+            f"it has no foreign language interface for {simulator_name}"
         )
 
-    if "VHPI" in supported:
+    if interface == "VHPI":
         # Riviera-PRO/Active-HDL, the simulators served by the VHPI application
         context.add_source_files(context.library.name, [VHDL_PATH / "python_pkg_vhpi.vhd"])
         try:
-            setup_vhpi_application(context.output_path, simulator_class)
+            setup_vhpi_application(context.output_path, context.simulator_class)
         except RuntimeError as exc:
             LOGGER.error("%s", exc)
             sys.exit(1)
         return
 
     try:
-        bridge = setup_bridge(context.output_path, simulator_class, context.run_script_path)
+        bridge = setup_bridge(context.output_path, context.simulator_class, context.run_script_path)
     except PythonBridgeError as exc:
         LOGGER.error("%s", exc)
         sys.exit(1)

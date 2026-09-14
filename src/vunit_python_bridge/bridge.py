@@ -28,9 +28,10 @@ VHDL_SOURCE_PATH = PACKAGE_PATH / "vhdl" / "src"
 BRIDGE_PACKAGE_TEMPLATE = VHDL_SOURCE_PATH / "python_bridge_pkg.vhd.in"
 CONFIG_FILE_NAME = "vunit_python_bridge.cfg"
 
-# Simulators reaching the bridge through VHPIDIRECT and through the FLI
+# The simulators the bridge serves, reaching it through VHPIDIRECT and through the FLI.
+# The rest of the simulators of the package are served by the VHPI application.
 FLI_SIMULATORS = ("modelsim",)
-SUPPORTED_SIMULATORS = ("nvc", "ghdl") + FLI_SIMULATORS
+BRIDGE_SIMULATORS = ("nvc", "ghdl") + FLI_SIMULATORS
 
 # GHDL backends that link the design ahead of time. For these the library
 # token in the VHPIDIRECT attribute is passed to the linker instead of being
@@ -64,7 +65,7 @@ def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
     :returns: The bridge. Its vhdl_files are to be added to the package library.
     """
     simulator_name = None if simulator_class is None else simulator_class.name
-    if simulator_name is not None and simulator_name not in SUPPORTED_SIMULATORS:
+    if simulator_name is not None and simulator_name not in BRIDGE_SIMULATORS:
         raise PythonBridgeError(
             f"The vunit-python-bridge package requires NVC, GHDL or Questa/ModelSim, "
             f"it is not supported for {simulator_name}"
