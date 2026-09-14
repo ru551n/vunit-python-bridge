@@ -101,10 +101,9 @@ Every operation that runs Python code or evaluates a Python expression --
 ``import_run_script`` and ``import_module_from_file`` -- takes an optional
 trailing parameter,
 ``session : python_session_t := default_session``, that selects the namespace
-the operation runs in. A session is made from its name with ``new_session``
-and its Python namespace is created the first time it is used; the
-``default_session`` constant used when the parameter is omitted runs in
-``__main__``.
+the operation runs in. A session is made with ``new_session`` and its Python
+namespace is created the first time it is used; the ``default_session``
+constant used when the parameter is omitted runs in ``__main__``.
 
 .. code-block:: vhdl
 
@@ -123,22 +122,41 @@ Since ``session`` comes after up to 10 positional arguments in ``call``, it is
 normally given by name, as above. Both sessions in the example can define
 ``model`` without interfering with each other.
 
-The name of a session is a VUnit `identity
-<https://vunit.github.io/id/user_guide.html>`__ under
-``python_bridge:python``, the identity of ``python_logger``, and ``name(session)``
-returns it. Two sessions made from the same name are the same session, so a
-session does not have to be passed around to be used in several places.
-
-Errors of an operation performed in a session other than the default one are
-reported on the logger of that session, ``get_logger(<its name>,
-python_logger)``, which is a child of ``python_logger``. Mocking a logger does
-not capture what its children log, which is why the default session reports on
-``python_logger`` itself and why a test that mocks the errors of a session
-mocks that session's logger:
+A session is a VUnit object with an `identity
+<https://vunit.github.io/id/user_guide.html>`__ of its own, returned by
+``get_id(session)``. ``new_session(name)`` creates the identity ``name`` under
+``python_bridge:python``, the identity of ``python_logger``, while
+``new_session(id)`` takes an identity that already exists and can therefore
+place the session anywhere in the identity tree, for example under the identity
+of what it serves:
 
 .. code-block:: vhdl
 
-    mock(get_logger("golden", python_logger), failure);
+    constant model_id : id_t := get_id("model", parent => get_id("my_testbench"));
+    constant model : python_session_t := new_session(model_id);
+
+Two sessions with the same identity are the same session, so a session does not
+have to be passed around to be used in several places. ``name(session)`` is the
+name of its identity without hierarchy, while the full name of the identity is
+the key of its Python namespace. Two sessions with the same name but different
+identities are therefore namespaces of their own.
+
+Errors of an operation are reported on the logger of the identity of the
+session it was performed in, ``get_logger(get_id(session))``. The loggers of
+the sessions created from a name are children of ``python_logger``, so log
+levels and log handler settings made on ``python_logger`` apply to them, but
+mocking a logger does not capture what its children log. A test that mocks the
+errors of a session mocks the logger of that session, the default session
+included:
+
+.. code-block:: vhdl
+
+    constant default_logger : logger_t := get_logger(get_id(default_session));
+    constant golden_logger : logger_t := get_logger(get_id(golden));
+
+    ...
+
+    mock(golden_logger, failure);
 
 On Riviera-PRO/Active-HDL (VHPI), only the default session is supported:
 passing any other session fails with a clear error.
@@ -314,16 +332,16 @@ belongs to every character array type and an overload would therefore make
 ``std_ulogic``, ``unsigned`` or ``signed`` value; any other metavalue is an
 error.
 
-A value that cannot be converted is reported as a failure on
-``python_logger``, and the argument becomes an expression raising the same
-message in Python. The call it is used in therefore fails with that message as
-well instead of being made without the argument, which is what would otherwise
-happen when the logger is mocked and the simulation continues:
+A value that cannot be converted has no session and is reported as a failure
+on ``python_logger`` itself. The argument becomes an expression raising the
+same message in Python. The call it is used in therefore fails with that
+message as well instead of being made without the argument, which is what would
+otherwise happen when the logger is mocked and the simulation continues:
 
 .. code-block:: text
 
     FAILURE - python_bridge:python - arg cannot convert 'X'; expected '0', '1', 'L' or 'H'
-    FAILURE - python_bridge:python - eval("model(__vunit__.error("arg cannot convert 'X'; ..."))") failed:
+    FAILURE - python_bridge:python:default - eval("model(__vunit__.error("arg cannot convert 'X'; ..."))") failed:
     Traceback (most recent call last):
       ...
     RuntimeError: arg cannot convert 'X'; expected '0', '1', 'L' or 'H'
@@ -476,15 +494,19 @@ Errors
 ------
 
 Python exceptions, syntax errors, type errors and undefined names are
-reported as failures on the ``python_logger`` logger (named
-``python_bridge:python``), including the Python traceback. The test fails and
-stops like for any other failure. The logger can be mocked to test error
-handling; when mocked, ``eval``/``call`` return a default value (``0``,
-``0.0``, ``""`` or an empty vector, depending on the type) after the failure.
+reported as failures on the logger of the :ref:`session
+<python_bridge:sessions>` the operation was performed in,
+``get_logger(get_id(session))``, including the Python traceback. For the
+default session that logger is named ``python_bridge:python:default`` and
+``python_logger`` (named ``python_bridge:python``) is its parent. The test
+fails and stops like for any other failure. The logger of the session can be
+mocked to test error handling; when mocked, ``eval``/``call`` return a default
+value (``0``, ``0.0``, ``""`` or an empty vector, depending on the type) after
+the failure.
 
 .. code-block:: text
 
-    FAILURE - python_bridge:python - eval("1 / 0") failed:
+    FAILURE - python_bridge:python:default - eval("1 / 0") failed:
     Traceback (most recent call last):
       File "<eval #3>", line 1, in <module>
         1 / 0
@@ -566,8 +588,9 @@ Semantics to be aware of
 
    * ``eval``/``eval_<type>`` are declared ``impure`` since they always read
      state from the Python interpreter.
-   * Errors are reported as failures on the ``python_logger`` logger,
-     including the Python traceback, rather than aborting the simulation.
+   * Errors are reported as failures on the logger of the :ref:`session
+     <python_bridge:sessions>`, including the Python traceback, rather than
+     aborting the simulation.
    * ``python_setup`` and ``python_cleanup`` are optional, see
      :ref:`python_bridge:setup_and_cleanup`. ``python_cleanup`` does not
      finalize the interpreter.
@@ -599,8 +622,8 @@ default session exists, the operations implemented by the bridge
 (``integer_array_t`` values, the ``boolean``, ``std_ulogic``, vector and
 ``integer_array_t`` results, ``exec_file``) report that they require NVC, GHDL
 or Questa, a Python error stops the simulation with the message printed by the
-application rather than through ``python_logger``, and ``real`` values outside
-the single precision float range are rejected.
+application rather than through the logger of the session, and ``real`` values
+outside the single precision float range are rejected.
 
 The ``embedded_python`` example distributed with VUnit,
 ``examples/vhdl/embedded_python``, is a complete example covering all three
@@ -613,9 +636,9 @@ arguments, a 20 register status dump, wide
 ``integer_array_t`` image transposed by NumPy, the result types of ``eval`` and
 ``call``, Python files executed with ``exec_file`` or imported with
 ``import_module_from_file``, two models loaded into a session each, and a
-Python model failing with ``python_logger`` mocked. Its last test case drives
-``python_model``, a verification component whose behaviour is the Python
-function in ``python_model.py`` rather than VHDL.
+Python model failing with the logger of the default session mocked. Its last
+test case drives ``python_model``, a verification component whose behaviour is
+the Python function in ``python_model.py`` rather than VHDL.
 
 .. _python_bridge:native:
 
