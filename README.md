@@ -90,6 +90,27 @@ and its argument forms, `exec_file`, `import_run_script`, the type mapping, `int
 NumPy, error reporting, and how the bridge works. A complete example covering all three simulator
 families is in [examples/embedded_python](examples/embedded_python).
 
+## Releasing
+
+A release is made by tagging the commit that sets the version:
+
+1. Bump `version` in `pyproject.toml`.
+2. Commit it.
+3. Tag the commit `vX.Y.Z`, with the release notes as the tag message:
+   `git tag -a v0.2.0`.
+4. Push the tag: `git push origin v0.2.0`.
+
+The [release workflow](.github/workflows/release.yml) then checks that the tag names the version in
+`pyproject.toml`, builds the Windows DLLs, the sdist and the wheel, runs the tests against the
+installed wheel with GHDL, publishes to PyPI and creates the GitHub release with the tag message as
+its body. Running the workflow manually (`workflow_dispatch`) does everything but publish and leaves
+the distribution as an artifact of the run, which is how a release is rehearsed.
+
+Publishing uses a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/), so there is
+no API token in the repository. It has to be set up once on PyPI, for project
+`vunit-python-bridge`: owner `ru551n`, repository `vunit-python-bridge`, workflow `release.yml`,
+environment `pypi`.
+
 ## License
 
 Mozilla Public License, v. 2.0, like VUnit. See [LICENSE](LICENSE).

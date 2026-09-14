@@ -1,0 +1,212 @@
+name: 'release'
+
+# Release of the vunit-python-bridge package. Pushing a tag vX.Y.Z naming the version
+# in pyproject.toml builds the distribution, smoke tests the built wheel, publishes it
+# to PyPI with a trusted publisher and creates the GitHub release of the tag.
+#
+# workflow_dispatch does everything but publish: the distribution is left as an
+# artifact of the run, which is how a release is rehearsed.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+#
+# The version to release, taken from pyproject.toml and checked against the tag
+#
+
+  version:
+    runs-on: ubuntu-latest
+    name: '🔍 Version'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v4
+
+    - name: '🐍 Setup Python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: '🔍 Check the version and the tag'
+      id: version
+      run: |
+        if [ "$GITHUB_REF_TYPE" = tag ]; then
+          python tools/release.py validate --tag "$GITHUB_REF_NAME"
+        else
+          python tools/release.py validate
+        fi
+        echo "version=$(python tools/release.py version)" >> "$GITHUB_OUTPUT"
+
+#
+# The distribution: prebuilt Windows DLLs, sdist and wheel
+#
+
+  dlls:
+    needs: version
+    uses: ./.github/workflows/python_bridge_dlls.yml
+
+  build:
+    needs: [version, dlls]
+    runs-on: ubuntu-latest
+    name: '📦 Build the distribution'
+    steps:
+
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v4
+
+    - name: '📥 Download bridge DLLs'
+      uses: actions/download-artifact@v4
+      with:
+        name: python-bridge-dlls
+        path: src/vunit_python_bridge/bin
+
+    - name: '🐍 Setup Python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: '📦 Build sdist and wheel'
+      run: |
+        pip install -U build --progress-bar off
+        python -m build
+
+    # As in python_bridge.yml: sources of every kind, the manifest, the five DLLs,
+    # no Linux binary, and the version that is being released.
+    - name: '🔍 Check distribution content'
+      run: |
+        tar tzf dist/*.tar.gz > content.txt
+        unzip -l dist/*.whl | awk '{print $4}' >> content.txt
+        for file in vunit_pkg.toml runtime.py native/bridge.h vhdl/src/python_bridge_pkg.vhd.in \
+                    vhdl/src/python_pkg.vhd vhdl/src/python_pkg_vhpi.c vhdl/src/python_context.vhd \
+                    foreign_application.py simulator_hooks.py; do
+          grep -q "vunit_python_bridge/$file\$" content.txt || { echo "missing $file"; exit 1; }
+        done
+        test "$(grep -c 'vunit_python_bridge/bin/vunit_python_bridge-cp3[0-9]*-win_amd64.dll$' content.txt)" = 10
+        if grep -q '\.so$' content.txt; then echo "the distribution has a Linux binary"; exit 1; fi
+        test -f "dist/vunit_python_bridge-${{ needs.version.outputs.version }}.tar.gz"
+        test -f "dist/vunit_python_bridge-${{ needs.version.outputs.version }}-py3-none-any.whl"
+
+    - name: '📤 Upload the distribution'
+      uses: actions/upload-artifact@v4
+      with:
+        name: distribution
+        path: dist/*
+        if-no-files-found: error
+
+#
+# The built wheel, installed and run like a user would
+#
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    name: '🚧 Smoke test the wheel · GHDL mcode'
+    env:
+      VUNIT_SIMULATOR: ghdl
+    steps:
+
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v4
+
+    - name: '📥 Download the distribution'
+      uses: actions/download-artifact@v4
+      with:
+        name: distribution
+        path: dist
+
+    - name: '🐍 Setup Python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: '⚙️ Setup GHDL'
+      uses: ghdl/setup-ghdl@main
+      with:
+        backend: mcode
+
+    - name: '🐍 Install the wheel in a virtual environment'
+      run: |
+        python -m venv "$RUNNER_TEMP/venv"
+        echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/venv/bin/pip" install "vunit_hdl @ git+https://github.com/ru551n/vunit.git@feature/package-setup-hooks" --progress-bar off
+        "$RUNNER_TEMP/venv/bin/pip" install dist/*.whl --progress-bar off
+
+    # The tests are run from outside the checkout, so the package under test can only
+    # be the installed wheel and never the sources next to them.
+    - name: '🚧 Feature tests against the installed wheel'
+      run: |
+        cp -r tests "$RUNNER_TEMP/tests"
+        cd "$RUNNER_TEMP"
+        python -c 'import vunit_python_bridge, sys; assert "site-packages" in vunit_python_bridge.__file__, vunit_python_bridge.__file__; print(vunit_python_bridge.__file__)'
+        python tests/run.py -p 4 -o "$RUNNER_TEMP/out"
+
+#
+# Publication, only of a tag
+#
+
+  publish:
+    needs: [version, smoke]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: '🚀 Publish to PyPI'
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+
+    - name: '📥 Download the distribution'
+      uses: actions/download-artifact@v4
+      with:
+        name: distribution
+        path: dist
+
+    # Trusted publishing: PyPI knows this repository and this workflow, so there is
+    # no API token to keep.
+    - name: '🚀 Publish'
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: [version, publish]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: '🏷️ GitHub release'
+    permissions:
+      contents: write
+    steps:
+
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: '📥 Download the distribution'
+      uses: actions/download-artifact@v4
+      with:
+        name: distribution
+        path: dist
+
+    # What was written when the tag was made is what the release says.
+    - name: '🏷️ Create the release'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+        if [ -s notes.md ]; then
+          notes=(--notes-file notes.md)
+        else
+          notes=(--generate-notes)
+        fi
+        gh release create "$GITHUB_REF_NAME" dist/* \
+          --title "vunit-python-bridge ${{ needs.version.outputs.version }}" \
+          "${notes[@]}"
