@@ -5,12 +5,12 @@
 # Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 
 """
-Build the prebuilt Windows DLL of the VHDL Python bridge for the running Python.
+Build the prebuilt Windows DLL of the VUnit Python bridge for the running Python.
 
 Must be run on Windows, with the Python version the DLL is built for, from a
 shell where the MSVC compiler (cl.exe) is available (e.g. a "Developer
 Command Prompt" or the ilammy/msvc-dev-cmd GitHub action). This is used by CI
-to produce the DLLs shipped in vunit/python_bridge/bin. End users never need it.
+to produce the DLLs shipped in src/vunit_python_bridge/bin. End users never need it.
 
 The Python DLL is delay-loaded; the bridge loads it by absolute path at run
 time. That way the simulator does not need the Python installation on PATH.
@@ -26,9 +26,9 @@ from pathlib import Path
 
 def _load_native_library():
     """
-    Load vunit/python_bridge/native_library.py by path, without importing vunit and its dependencies.
+    Load src/vunit_python_bridge/native_library.py by path, without importing vunit and its dependencies.
     """
-    path = Path(__file__).parent.parent / "vunit" / "python_bridge" / "native_library.py"
+    path = Path(__file__).parent.parent / "src" / "vunit_python_bridge" / "native_library.py"
     spec = importlib.util.spec_from_file_location("_vunit_python_bridge_native_library", path)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     spec.loader.exec_module(module)  # type: ignore[union-attr]

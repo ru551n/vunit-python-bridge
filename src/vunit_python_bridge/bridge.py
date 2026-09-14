@@ -14,7 +14,6 @@ import re
 import sys
 from pathlib import Path
 from typing import Callable, List, Optional
-from weakref import WeakKeyDictionary
 
 from .native_library import (
     PACKAGE_PATH,
@@ -25,7 +24,7 @@ from .native_library import (
 )
 
 RUNTIME_SOURCE = PACKAGE_PATH / "runtime.py"
-VHDL_SOURCE_PATH = PACKAGE_PATH.parent / "vhdl" / "python" / "src"
+VHDL_SOURCE_PATH = PACKAGE_PATH / "vhdl" / "src"
 BRIDGE_PACKAGE_TEMPLATE = VHDL_SOURCE_PATH / "python_bridge_pkg.vhd.in"
 CONFIG_FILE_NAME = "vunit_python_bridge.cfg"
 
@@ -41,35 +40,38 @@ GHDL_LINKING_BACKENDS = ("llvm", "gcc")
 # {foreign:<entry point>} placeholder of the bridge package template
 FOREIGN_PATTERN = re.compile(r"\{foreign:(\w+)\}")
 
-_BRIDGES: "WeakKeyDictionary[object, PythonBridge]" = WeakKeyDictionary()
-
-
 class PythonBridge:
     """
     A prepared bridge: native library, its configuration and the generated VHDL.
     """
 
-    def __init__(self, library_file: Path, vhdl_files: List[Path]) -> None:
+    def __init__(
+        self,
+        library_file: Path,
+        vhdl_files: List[Path],
+        ghdl_backend: Optional[str] = None,
+    ) -> None:
         self.library_file = library_file
         self.vhdl_files = vhdl_files
+        self.ghdl_backend = ghdl_backend
 
     @property
     def directory(self) -> Path:
         return self.library_file.parent
 
 
-def setup(project, output_path: str, simulator_class, run_script_path: Path) -> PythonBridge:
+def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
     """
-    Prepare the Python bridge for a project. Called by add_python().
+    Prepare the Python bridge for a project. Called by the package setup function.
 
     :param run_script_path: The run script. Its directory is put on sys.path
                             by the runtime, like when it is started by python.
-    :returns: The bridge. Its vhdl_files are to be added to vunit_lib.
+    :returns: The bridge. Its vhdl_files are to be added to the package library.
     """
     simulator_name = None if simulator_class is None else simulator_class.name
     if simulator_name is not None and simulator_name not in SUPPORTED_SIMULATORS:
         raise PythonBridgeError(
-            f"VHDL Python support (add_python()) requires NVC, GHDL or Questa/ModelSim, "
+            f"The vunit-python-bridge package requires NVC, GHDL or Questa/ModelSim, "
             f"it is not supported for {simulator_name}"
         )
 
@@ -91,15 +93,14 @@ def setup(project, output_path: str, simulator_class, run_script_path: Path) -> 
         ),
     )
 
-    bridge = PythonBridge(
+    return PythonBridge(
         library_file,
         [
             bridge_package,
             VHDL_SOURCE_PATH / "python_ffi_pkg_bridge.vhd",
         ],
+        ghdl_backend=_ghdl_backend(simulator_class) if simulator_name == "ghdl" else None,
     )
-    _BRIDGES[project] = bridge
-    return bridge
 
 
 def _vhpidirect_token(simulator_name, simulator_class, library_file: Path) -> str:
@@ -135,13 +136,6 @@ def _render_bridge_package(foreign: Callable[[str], str]) -> str:
     """
     template = BRIDGE_PACKAGE_TEMPLATE.read_text(encoding="utf-8")
     return FOREIGN_PATTERN.sub(lambda match: foreign(match.group(1)), template)
-
-
-def get_bridge(project) -> Optional[PythonBridge]:
-    """
-    The bridge of a project, None unless Python support is enabled.
-    """
-    return _BRIDGES.get(project)
 
 
 def _config_text(run_script_dir: str) -> str:

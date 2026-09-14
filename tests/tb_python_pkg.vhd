@@ -6,10 +6,9 @@
 
 library vunit_lib;
 context vunit_lib.vunit_context;
--- Keep this as an add-on while developing
--- but eventually I think it should be included
--- by default for supporting simulators
-context vunit_lib.python_context;
+
+library python_bridge;
+context python_bridge.python_context;
 
 library ieee;
 use ieee.math_real.all;

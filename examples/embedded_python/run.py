@@ -8,19 +8,19 @@
 Embedded Python
 ---------------
 
-Demonstrates calling Python from VHDL with ``add_python()``: executing Python
-code and calling Python functions, for example NumPy/Matplotlib reference
-models, from a testbench. The test cases cover ``exec`` and ``eval`` with the
-types they convert, calls with positional, keyword and group arguments, wide
-``unsigned``/``signed`` and ``std_ulogic`` argument values, an
-``integer_array_t`` image shared with NumPy, Python files executed with
-``exec_file`` or imported with ``import_module_from_file``, two models loaded
-into a session each, error reporting, and ``python_model``, a verification
-component whose behaviour is a Python function. Some tests need Python
-packages VUnit does not depend on (``PySimpleGUI``, ``python-constraint``,
-``crccheck`` and ``matplotlib``); the run script says which when they are
-missing. Three tests demonstrate error reporting and fail by design. See
-:ref:`python_bridge`.
+Demonstrates calling Python from VHDL with the vunit-python-bridge package:
+executing Python code and calling Python functions, for example
+NumPy/Matplotlib reference models, from a testbench. The test cases cover
+``exec`` and ``eval`` with the types they convert, calls with positional,
+keyword and group arguments, wide ``unsigned``/``signed`` and ``std_ulogic``
+argument values, an ``integer_array_t`` image shared with NumPy, Python files
+executed with ``exec_file`` or imported with ``import_module_from_file``, two
+models loaded into a session each, error reporting, and ``python_model``, a
+verification component whose behaviour is a Python function. Some tests need
+Python packages the package does not depend on (``PySimpleGUI``,
+``python-constraint``, ``crccheck`` and ``matplotlib``); the run script says
+which when they are missing. Three tests demonstrate error reporting and fail
+by design. See the user guide of the package.
 """
 
 import importlib.util
@@ -106,10 +106,11 @@ def main():
 
     vu = VUnit.from_argv()
     vu.add_vhdl_builtins()
-    vu.add_python()
     vu.add_random()
-    # add_python() builds the foreign language application of the simulator
-    # (the Python bridge, or the VHPI application) under the output path.
+    vu.add_package("vunit-python-bridge")
+    # Adding the package builds the foreign language application of the
+    # simulator (the Python bridge, or the VHPI application) under the output
+    # path.
 
     lib = vu.add_library("lib")
     lib.add_source_files(root / "*.vhd")

@@ -5,10 +5,9 @@
 -- Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 --
 -- The foreign language interface of the Python package for NVC and GHDL,
--- implemented with the VUnit Python bridge (vunit/python_bridge). It provides
+-- implemented with the VUnit Python bridge (src/vunit_python_bridge). It provides
 -- the same subprograms as the FLI and VHPI variants but over the private
--- python_bridge_pkg, which VUnit generates when Python support is enabled with
--- add_python().
+-- python_bridge_pkg, which the setup function of the package generates.
 --
 -- Deviations from the other variants:
 --   * The subprograms are impure since they call impure foreign subprograms.
@@ -21,16 +20,17 @@
 -- variants of this package declare the same primitives and implement them by
 -- reporting a failure.
 
-use work.id_pkg.all;
-use work.integer_array_pkg.all;
-use work.integer_vector_ptr_pkg.all;
-use work.logger_pkg.all;
+library vunit_lib;
+use vunit_lib.id_pkg.all;
+use vunit_lib.integer_array_pkg.all;
+use vunit_lib.integer_vector_ptr_pkg.all;
+use vunit_lib.logger_pkg.all;
 use work.python_bridge_pkg.all;
 
 package python_ffi_pkg is
   -- The identity of the Python interface. It is the parent of the session
   -- identities and of python_logger.
-  constant p_python_id : id_t := get_id("vunit_lib:python");
+  constant p_python_id : id_t := get_id("python_bridge:python");
 
   -- Logger used to report Python errors, for example exceptions with their
   -- traceback. An operation performed in a session other than the default one
@@ -94,7 +94,7 @@ package python_ffi_pkg is
   -----------------------------------------------------------------------------
   -- Private, the primitives the bridge operations of python_pkg are built on
   -----------------------------------------------------------------------------
-  -- Result kinds, must match vunit/python_bridge/runtime.py
+  -- Result kinds, must match src/vunit_python_bridge/runtime.py
   constant p_kind_integer : integer := 0;
   constant p_kind_real : integer := 1;
   constant p_kind_boolean : integer := 2;

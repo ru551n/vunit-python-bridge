@@ -14,7 +14,8 @@ use ieee.numeric_std.all;
 
 library vunit_lib;
 context vunit_lib.vunit_context;
-context vunit_lib.python_context;
+library python_bridge;
+context python_bridge.python_context;
 
 entity tb_python_pkg_bridge is
   generic (runner_cfg : string);
@@ -974,7 +975,7 @@ begin
       elsif run("Test that a session is an identity under the Python interface") then
         check_equal(name(golden), "golden");
         check_equal(name(default_session), "default");
-        check_equal(get_full_name(get_logger(name(golden), python_logger)), "vunit_lib:python:golden");
+        check_equal(get_full_name(get_logger(name(golden), python_logger)), "python_bridge:python:golden");
         -- The same name is the same session
         check_equal(name(new_session("golden")), "golden");
         exec("session_marker = 1", golden);

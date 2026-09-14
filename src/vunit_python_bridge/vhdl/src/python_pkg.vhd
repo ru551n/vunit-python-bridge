@@ -7,23 +7,24 @@
 -- Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 
 use work.python_ffi_pkg.all;
-use work.path.all;
-use work.run_pkg.all;
-use work.runner_pkg.all;
-use work.integer_vector_ptr_pkg.all;
-use work.string_ops.all;
+library vunit_lib;
+use vunit_lib.path.all;
+use vunit_lib.run_pkg.all;
+use vunit_lib.runner_pkg.all;
+use vunit_lib.integer_vector_ptr_pkg.all;
+use vunit_lib.string_ops.all;
 
 use std.textio.all;
 
 ------------------------------------------------------------------------------
 -- This file is generated from tools/python_pkg.vhd.in by
--- vunit/vhdl/python/tools/generate_python_pkg.py. Do not edit.
+-- src/vunit_python_bridge/vhdl/tools/generate_python_pkg.py. Do not edit.
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.integer_array_pkg.all;
-use work.logger_pkg.all;
+use vunit_lib.integer_array_pkg.all;
+use vunit_lib.logger_pkg.all;
 ------------------------------------------------------------------------------
 
 package python_pkg is

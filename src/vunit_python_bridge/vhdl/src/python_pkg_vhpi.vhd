@@ -8,14 +8,15 @@
 
 use std.textio.all;
 
-use work.id_pkg.all;
-use work.integer_array_pkg.all;
-use work.integer_vector_ptr_pkg.all;
-use work.logger_pkg.all;
+library vunit_lib;
+use vunit_lib.id_pkg.all;
+use vunit_lib.integer_array_pkg.all;
+use vunit_lib.integer_vector_ptr_pkg.all;
+use vunit_lib.logger_pkg.all;
 
 package python_ffi_pkg is
   -- The identity of the Python interface, the parent of the session identities
-  constant p_python_id : id_t := get_id("vunit_lib:python");
+  constant p_python_id : id_t := get_id("python_bridge:python");
 
   -- A session is a named Python namespace, created from its name. Only the
   -- default session, the __main__ namespace, is supported by this foreign
@@ -84,7 +85,7 @@ package python_ffi_pkg is
   -- Logger used to report Python errors
   constant python_logger : logger_t := get_logger(p_python_id);
 
-  -- Result kinds, must match vunit/python_bridge/runtime.py
+  -- Result kinds, must match src/vunit_python_bridge/runtime.py
   constant p_kind_integer : integer := 0;
   constant p_kind_real : integer := 1;
   constant p_kind_boolean : integer := 2;

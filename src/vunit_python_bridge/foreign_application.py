@@ -6,9 +6,9 @@
 
 """
 Building the foreign language application implementing ``python_pkg``/``python_context``
-(see :ref:`python_bridge`) for the simulators the VUnit Python bridge does not serve.
+for the simulators the VUnit Python bridge does not serve.
 
-``setup_vhpi_application`` is called by :meth:`add_python() <vunit.ui.VUnit.add_python>` for
+``setup_vhpi_application`` is called by the setup function of the package for
 Riviera-PRO/Active-HDL (VHPI). The application is built under the output path on first use and
 rebuilt when its sources, the Python running VUnit or the simulator change.
 """
@@ -19,7 +19,7 @@ import subprocess
 import hashlib
 
 
-SRC_PATH = Path(__file__).parent.parent.resolve() / "vhdl" / "python" / "src"
+SRC_PATH = Path(__file__).parent.resolve() / "vhdl" / "src"
 
 
 def setup_vhpi_application(output_path, simulator_class):

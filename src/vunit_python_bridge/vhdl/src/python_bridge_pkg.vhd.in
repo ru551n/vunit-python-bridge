@@ -4,14 +4,14 @@
 --
 -- Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 --
--- PRIVATE foreign subprograms of the VUnit Python bridge (vunit/python_bridge/native).
+-- PRIVATE foreign subprograms of the VUnit Python bridge (src/vunit_python_bridge/native).
 --
--- This file is a template. VUnit substitutes every {foreign:<entry point>}
--- placeholder with the foreign attribute string of the selected simulator --
--- "VHPIDIRECT <library> <entry point>" for NVC and GHDL, "fli_<entry point>
--- <library>" for the FLI of Questa/ModelSim -- and compiles the result into
--- vunit_lib when Python support is enabled with add_python(). The public API
--- is python_pkg/python_ffi_pkg, which is implemented on top of this package.
+-- This file is a template. The setup function of the package substitutes every
+-- {foreign:<entry point>} placeholder with the foreign attribute string of the
+-- selected simulator -- "VHPIDIRECT <library> <entry point>" for NVC and GHDL,
+-- "fli_<entry point> <library>" for the FLI of Questa/ModelSim -- and adds the
+-- result to the python_bridge library. The public API is
+-- python_pkg/python_ffi_pkg, which is implemented on top of this package.
 --
 -- Only scalars and constrained arrays cross the foreign interface since their
 -- ABI is identical for NVC and GHDL on all platforms and is translated to the

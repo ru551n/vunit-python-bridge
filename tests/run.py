@@ -5,7 +5,7 @@
 # Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 
 """
-Run script of the VHDL Python package.
+Run script of the tests of the vunit-python-bridge package.
 
 It is imported by tb_python_pkg through import_run_script, which is why
 everything but remote_test is guarded by a __main__ check.
@@ -73,16 +73,16 @@ def main():
     args.exit_0 = True
     vu = VUnit.from_args(args)
     vu.add_vhdl_builtins()
-    vu.add_python()
+    vu.add_package("vunit-python-bridge")
 
     simulator_name = vu.get_simulator_name()
     expected_failures = [] if simulator_name in BRIDGE_SIMULATORS else list(EXPECTED_FAILURES_VHPI)
 
     lib = vu.add_library("lib")
-    lib.add_source_file(ROOT / "test" / "tb_python_pkg.vhd")
+    lib.add_source_file(ROOT / "tb_python_pkg.vhd")
     if simulator_name in BRIDGE_SIMULATORS:
         # The operations implemented by the Python bridge
-        lib.add_source_file(ROOT / "test" / "tb_python_pkg_bridge.vhd")
+        lib.add_source_file(ROOT / "tb_python_pkg_bridge.vhd")
 
     vu.set_compile_option("rivierapro.vcom_flags", ["-dbg"])
     vu.set_sim_option("rivierapro.vsim_flags", ["-interceptcoutput"])

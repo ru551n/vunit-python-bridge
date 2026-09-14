@@ -7,7 +7,7 @@
 -- Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 
 context python_context is
-  library vunit_lib;
-  use vunit_lib.python_pkg.all;
-  use vunit_lib.python_ffi_pkg.all;
+  library python_bridge;
+  use python_bridge.python_pkg.all;
+  use python_bridge.python_ffi_pkg.all;
 end context;

@@ -1,0 +1,16 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
+
+[package]
+requires-vunit = ">=5.0.0.dev12"
+requires-vhdl = ">=2008"
+library = "python_bridge"
+setup = "vunit_python_bridge:setup"
+
+# The foreign language interface implementing python_ffi_pkg is selected by the
+# setup function since the choice depends on the simulator.
+[[package.sources]]
+include = ["vhdl/src/python_context.vhd", "vhdl/src/python_pkg.vhd"]

@@ -64,7 +64,7 @@ ARG_VALUES = [
 #
 # name:     suffix of eval_<name> and call_<name>
 # vhdl:     the VHDL type
-# kind:     result kind passed to the bridge, see vunit/python_bridge/runtime.py
+# kind:     result kind passed to the bridge, see src/vunit_python_bridge/runtime.py
 # value:    expression giving the result of a successful evaluation
 # default:  value returned after a failure
 # hand_written_eval/hand_written_call: true when the eval/call function is

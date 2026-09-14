@@ -8,7 +8,8 @@
 -- model_file. The VHDL only passes values between the ports and the model.
 
 library vunit_lib;
-context vunit_lib.python_context;
+library python_bridge;
+context python_bridge.python_context;
 
 entity python_model is
   generic(model_file : string);

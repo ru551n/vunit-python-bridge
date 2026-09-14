@@ -6,7 +6,8 @@
 
 library vunit_lib;
 context vunit_lib.vunit_context;
-context vunit_lib.python_context;
+library python_bridge;
+context python_bridge.python_context;
 use vunit_lib.random_pkg.all;
 
 library ieee;
