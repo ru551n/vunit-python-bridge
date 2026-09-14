@@ -8,9 +8,9 @@
 """
 The VUnit package making Python callable from VHDL.
 
-``vu.add_package("vunit-python-bridge")`` compiles ``python_pkg``/``python_context`` into the
-``python_bridge`` library and sets up the foreign language interface implementing them for the
-selected simulator:
+``vu.add_package("vunit-python-bridge", allow_setup=True)`` compiles
+``python_pkg``/``python_context`` into the ``python_bridge`` library and sets up the foreign
+language interface implementing them for the selected simulator:
 
 * NVC, GHDL (VHPIDIRECT) and Questa/ModelSim (FLI) are served by the VUnit Python bridge, a
   small C library (native/*.c) embedding CPython in the simulator process.

@@ -73,7 +73,7 @@ def main():
     args.exit_0 = True
     vu = VUnit.from_args(args)
     vu.add_vhdl_builtins()
-    vu.add_package("vunit-python-bridge")
+    vu.add_package("vunit-python-bridge", allow_setup=True)
 
     simulator_name = vu.get_simulator_name()
     expected_failures = [] if simulator_name in BRIDGE_SIMULATORS else list(EXPECTED_FAILURES_VHPI)

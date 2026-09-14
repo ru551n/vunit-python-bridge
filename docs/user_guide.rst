@@ -15,12 +15,16 @@ library and is added to a project with ``add_package()``:
 
     vu = VUnit.from_argv()
     vu.add_vhdl_builtins()
-    vu.add_package("vunit-python-bridge")
+    vu.add_package("vunit-python-bridge", allow_setup=True)
 
     lib = vu.add_library("lib")
     lib.add_source_files("*.vhd")
 
     vu.main()
+
+``allow_setup=True`` is required because, when added, the package builds its native library and
+registers simulator options as part of its setup function, which VUnit only runs when the project
+allows it.
 
 ``python_pkg`` and its foreign language interface, ``python_ffi_pkg``, then
 become available through ``python_context``:
@@ -615,7 +619,7 @@ with their ``ccomp`` driver. The package builds the application under the
 output path (``<output path>/<simulator>/libraries``) the first time it is
 added and rebuilds it when the sources, the Python running VUnit or the
 simulator installation change, so a run script needs nothing beyond
-``add_package()``.
+``add_package("vunit-python-bridge", allow_setup=True)``.
 
 This application differs from the Python bridge in a few ways: only the
 default session exists, the operations implemented by the bridge

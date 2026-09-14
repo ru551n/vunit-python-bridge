@@ -29,13 +29,17 @@ from vunit import VUnit
 
 vu = VUnit.from_argv()
 vu.add_vhdl_builtins()
-vu.add_package("vunit-python-bridge")
+vu.add_package("vunit-python-bridge", allow_setup=True)
 
 lib = vu.add_library("lib")
 lib.add_source_files("*.vhd")
 
 vu.main()
 ```
+
+`allow_setup=True` is required because, when added, the package builds its native library and
+registers simulator options as part of its setup function, which VUnit only runs when the project
+allows it.
 
 The testbench gets the API from the `python_context` context of the `python_bridge` library:
 
