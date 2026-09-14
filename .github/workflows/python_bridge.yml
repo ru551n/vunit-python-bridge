@@ -107,9 +107,6 @@ jobs:
     - name: '🚧 Feature tests'
       run: python tests/run.py -p 4 -o "$RUNNER_TEMP/out dir"
 
-    - name: '🚧 Example'
-      run: python examples/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
-
 #
 # Windows, prebuilt MSVC DLLs
 #
@@ -173,9 +170,6 @@ jobs:
       run: |
         ! command -v cl
         python tests/run.py -p 4 -o "$RUNNER_TEMP/out dir"
-
-    - name: '🚧 Example'
-      run: python examples/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
 
 #
 # Packaging, sources and DLLs included, no Linux binaries

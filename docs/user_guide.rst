@@ -602,9 +602,9 @@ or Questa, a Python error stops the simulation with the message printed by the
 application rather than through ``python_logger``, and ``real`` values outside
 the single precision float range are rejected.
 
-See `➚ examples/embedded_python
-<https://github.com/ru551n/vunit-python-bridge/tree/main/examples/embedded_python>`__
-for a complete example covering all three simulator families.
+The ``embedded_python`` example distributed with VUnit,
+``examples/vhdl/embedded_python``, is a complete example covering all three
+simulator families.
 
 Its ``tb_example.vhd`` has a test case for each part of the API: ``exec`` and
 ``eval`` with the types they convert, calls with positional, keyword and group

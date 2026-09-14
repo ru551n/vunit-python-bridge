@@ -88,7 +88,7 @@ environment and its installed packages.
 The user guide is in [docs/user_guide.rst](docs/user_guide.rst): sessions, `exec`, `eval`, `call`
 and its argument forms, `exec_file`, `import_run_script`, the type mapping, `integer_array_t` and
 NumPy, error reporting, and how the bridge works. A complete example covering all three simulator
-families is in [examples/embedded_python](examples/embedded_python).
+families is distributed with VUnit as `examples/vhdl/embedded_python`.
 
 ## Releasing
 
