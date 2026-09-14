@@ -103,7 +103,7 @@ def _modelsim_process_flags():
         if not sys.platform.startswith("linux"):
             return []
 
-        prefix = simulator_interface.find_prefix()
+        prefix = simulator_interface.prefix
         if prefix not in known:
             known[prefix] = _vsim_knows_flag(prefix, simulator_interface)
         if not known[prefix]:

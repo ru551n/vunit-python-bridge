@@ -56,15 +56,24 @@ class PythonBridge:
         return self.library_file.parent
 
 
-def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
+def setup(
+    output_path,
+    run_script_path: Path,
+    simulator_name: Optional[str] = None,
+    simulator_prefix: Optional[str] = None,
+    simulator_backend: Optional[str] = None,
+) -> PythonBridge:
     """
     Prepare the Python bridge for a project. Called by the package setup function.
 
     :param run_script_path: The run script. Its directory is put on sys.path
                             by the runtime, like when it is started by python.
+    :param simulator_name: The name of the selected simulator, None for no simulator.
+    :param simulator_prefix: The path its executables were found in.
+    :param simulator_backend: How the installation found there was built, which for GHDL
+                              is the code generator deciding how the library is bound.
     :returns: The bridge. Its vhdl_files are to be added to the package library.
     """
-    simulator_name = None if simulator_class is None else simulator_class.name
     if simulator_name is not None and simulator_name not in BRIDGE_SIMULATORS:
         raise PythonBridgeError(
             f"The vunit-python-bridge package requires NVC, GHDL or Questa/ModelSim, "
@@ -74,8 +83,13 @@ def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
     check_python_build()
 
     is_fli = simulator_name in FLI_SIMULATORS
+    if is_fli and simulator_prefix is None:
+        raise PythonBridgeError(
+            f"The FLI variant of the bridge is built against the {simulator_name} installation, but it was not found"
+        )
+
     root = Path(output_path) / "python_bridge"
-    library_file = prepare_library(root, Path(simulator_class.find_prefix()) if is_fli else None)
+    library_file = prepare_library(root, Path(simulator_prefix) if is_fli else None)
     run_script_dir = str(Path(run_script_path).resolve().parent)
     _write_if_changed(library_file.parent / CONFIG_FILE_NAME, _config_text(run_script_dir))
 
@@ -85,7 +99,7 @@ def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
         _render_bridge_package(
             _fli_foreign(library_file)
             if is_fli
-            else _vhpidirect_foreign(_vhpidirect_token(simulator_name, simulator_class, library_file))
+            else _vhpidirect_foreign(_vhpidirect_token(simulator_name, simulator_backend, library_file))
         ),
     )
 
@@ -98,12 +112,12 @@ def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
     )
 
 
-def _vhpidirect_token(simulator_name, simulator_class, library_file: Path) -> str:
+def _vhpidirect_token(simulator_name, simulator_backend: Optional[str], library_file: Path) -> str:
     """
     The library token of the VHPIDIRECT attributes: the file name the simulator dlopen()s,
     or the linker flag of the GHDL backends that link the design ahead of time.
     """
-    if simulator_name == "ghdl" and _ghdl_backend(simulator_class) in GHDL_LINKING_BACKENDS:
+    if simulator_name == "ghdl" and simulator_backend in GHDL_LINKING_BACKENDS:
         return "-lvunit_python_bridge"
     return library_file.name
 
@@ -162,17 +176,3 @@ def _write_if_changed(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
     tmp.write_bytes(data)
     os.replace(tmp, path)
-
-
-def _ghdl_backend(simulator_class) -> Optional[str]:
-    """
-    Backend of the GHDL that will be used, None if not found.
-
-    The simulator interface has a backend property but no interface exists yet when the
-    generated VHDL is written, only the class, so the backend is determined the way the
-    interface determines it for itself.
-    """
-    prefix = simulator_class.find_prefix()
-    if prefix is None:
-        return None
-    return simulator_class.determine_backend(prefix)

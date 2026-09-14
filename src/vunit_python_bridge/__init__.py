@@ -82,14 +82,20 @@ def setup(context):
         # Riviera-PRO/Active-HDL, the simulators served by the VHPI application
         context.add_source_files(context.library.name, [VHDL_PATH / "python_pkg_vhpi.vhd"])
         try:
-            setup_vhpi_application(context.output_path, context.simulator_class)
+            setup_vhpi_application(context.output_path, simulator_name, context.simulator_prefix)
         except RuntimeError as exc:
             LOGGER.error("%s", exc)
             sys.exit(1)
         return
 
     try:
-        bridge = setup_bridge(context.output_path, context.simulator_class, context.run_script_path)
+        bridge = setup_bridge(
+            context.output_path,
+            context.run_script_path,
+            simulator_name,
+            context.simulator_prefix,
+            context.simulator_backend,
+        )
     except PythonBridgeError as exc:
         LOGGER.error("%s", exc)
         sys.exit(1)

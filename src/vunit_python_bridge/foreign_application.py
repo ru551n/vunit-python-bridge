@@ -22,14 +22,20 @@ import hashlib
 SRC_PATH = Path(__file__).parent.resolve() / "vhdl" / "src"
 
 
-def setup_vhpi_application(output_path, simulator_class):
+def setup_vhpi_application(output_path, simulator_name, simulator_prefix):
     """
     Build the VHPI application for Riviera-PRO/Active-HDL under the output path, unless the one
     already there was built from the same sources for the same Python and simulator.
+
+    :param simulator_prefix: The path the executables of the simulator were found in, which is
+                             where its ccomp compiler driver is.
     """
-    target = Path(output_path) / simulator_class.name / "libraries" / "python.dll"
+    if simulator_prefix is None:
+        raise RuntimeError(f"The VHPI application is built with the ccomp of {simulator_name}, but it was not found")
+
+    target = Path(output_path) / simulator_name / "libraries" / "python.dll"
     _build_if_stale(
-        target, [SRC_PATH / "python_pkg_vhpi.c", SRC_PATH / "python_pkg.c"], simulator_class, _build_vhpi
+        target, [SRC_PATH / "python_pkg_vhpi.c", SRC_PATH / "python_pkg.c"], simulator_prefix, _build_vhpi
     )
 
 
@@ -46,11 +52,11 @@ def _fingerprint(sources, simulator_prefix):
     return digest.hexdigest()
 
 
-def _build_if_stale(target, sources, simulator_class, build):
+def _build_if_stale(target, sources, simulator_prefix, build):
     """
     Build target with build(target, sources, simulator_prefix) unless it is up to date.
     """
-    simulator_prefix = Path(simulator_class.find_prefix()).resolve()
+    simulator_prefix = Path(simulator_prefix).resolve()
     fingerprint = _fingerprint(sources, simulator_prefix)
     fingerprint_file = target.with_suffix(target.suffix + ".fingerprint")
     if target.exists() and fingerprint_file.exists() and fingerprint_file.read_text(encoding="utf-8") == fingerprint:

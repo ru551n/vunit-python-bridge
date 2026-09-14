@@ -40,24 +40,6 @@ def create_tempdir():
         yield Path(name).resolve()
 
 
-class _FakeSimulator:
-    """
-    Minimal stand-in for a simulator interface class, as used directly by
-    bridge_setup.setup() (name, find_prefix(), determine_backend()).
-    """
-
-    def __init__(self, name, backend=None, prefix="prefix"):
-        self.name = name
-        self._backend = backend
-        self._prefix = prefix
-
-    def find_prefix(self):
-        return self._prefix
-
-    def determine_backend(self, prefix):  # pylint: disable=unused-argument
-        return self._backend
-
-
 # The complete VHPIDIRECT contract between python_bridge_pkg.vhd.in and
 # native/*.c. The generated VHDL and the built library must agree on it
 # exactly: nothing else may be exported.
@@ -105,10 +87,14 @@ class _FakeContext:
     A stand-in for vunit.package_context.PackageContext.
     """
 
-    def __init__(self, simulator_class, output_path, run_script_path):
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, simulator_class, output_path, run_script_path, simulator_prefix=None, simulator_backend=None
+    ):
         self.simulator_class = simulator_class
         self.output_path = output_path
         self.run_script_path = run_script_path
+        self.simulator_prefix = simulator_prefix
+        self.simulator_backend = simulator_backend
         self.library = _FakeLibrary()
         self.added_files = []
         self.hooks = {}
@@ -213,8 +199,8 @@ class TestPackageSetup(unittest.TestCase):
         self.addCleanup(self.tempdir_cm.__exit__, None, None, None)
         self.run_script = _write_run_script(self.tempdir / "run.py")
 
-    def _context(self, simulator_class):
-        return _FakeContext(simulator_class, self.tempdir / "out", self.run_script)
+    def _context(self, simulator_class, prefix="/sim/bin", backend=None):
+        return _FakeContext(simulator_class, self.tempdir / "out", self.run_script, prefix, backend)
 
     @staticmethod
     def _simulator(name):
@@ -251,7 +237,7 @@ class TestPackageSetup(unittest.TestCase):
         ) as vhpi_mock:
             vunit_python_bridge.setup(context)
         setup_mock.assert_not_called()
-        vhpi_mock.assert_called_once_with(context.output_path, simulator)
+        vhpi_mock.assert_called_once_with(context.output_path, name, context.simulator_prefix)
 
         self.assertEqual(self._added_names(context), {"python_pkg_vhpi.vhd"})
         self.assertEqual({library for library, _ in context.added_files}, {"python_bridge"})
@@ -277,20 +263,26 @@ class TestPackageSetup(unittest.TestCase):
             ],
         )
 
-    def _check_bridge_files_added(self, simulator):
+    def _check_bridge_files_added(self, simulator, backend=None):
         """
         The generated bridge files, and not the VHPI application package, are added
         for a simulator served by the Python bridge.
         """
-        context = self._context(simulator)
+        context = self._context(simulator, backend=backend)
         fake_bridge = self._fake_bridge()
         with mock.patch("vunit_python_bridge.bridge.setup", return_value=fake_bridge) as setup_mock:
             vunit_python_bridge.setup(context)
 
-        # The bridge must be handed the output path, the simulator class and the run
-        # script path (whose directory the runtime puts on sys.path, like python does
-        # for a run script).
-        setup_mock.assert_called_once_with(context.output_path, simulator, context.run_script_path)
+        # The bridge must be handed the output path, the run script path (whose directory
+        # the runtime puts on sys.path, like python does for a run script) and the
+        # simulator as the context knows it: its name, prefix and backend.
+        setup_mock.assert_called_once_with(
+            context.output_path,
+            context.run_script_path,
+            simulator.name,
+            context.simulator_prefix,
+            context.simulator_backend,
+        )
 
         for expected in fake_bridge.vhdl_files:
             self.assertIn(("python_bridge", expected), context.added_files)
@@ -298,8 +290,8 @@ class TestPackageSetup(unittest.TestCase):
         return context
 
     def test_vhpidirect_adds_the_bridge_files(self):
-        for name in ("nvc", "ghdl"):
-            self._check_bridge_files_added(self._simulator(name))
+        self._check_bridge_files_added(self._simulator("nvc"))
+        self._check_bridge_files_added(self._simulator("ghdl"), backend="mcode")
 
     def test_fli_adds_the_bridge_files(self):
         # Questa/ModelSim is served by the bridge too, through native/fli.c.
@@ -361,13 +353,13 @@ class TestBridgePackageSubstitution(unittest.TestCase):
         self.addCleanup(self.tempdir_cm.__exit__, None, None, None)
         self.run_script = _write_run_script(self.tempdir / "run.py")
 
-    def _setup(self, simulator, library_file_name="libvunit_python_bridge.so"):
+    def _setup(self, simulator_name, backend=None, library_file_name="libvunit_python_bridge.so"):
         fake_library_file = self.tempdir / "cache" / library_file_name
         with mock.patch("vunit_python_bridge.bridge.prepare_library", return_value=fake_library_file):
-            return bridge_setup.setup(self.tempdir / "out", simulator, self.run_script)
+            return bridge_setup.setup(self.tempdir / "out", self.run_script, simulator_name, "/sim/bin", backend)
 
     def _fli_setup(self):
-        return self._setup(_FakeSimulator("modelsim"), library_file_name="libvunit_python_bridge_fli.so")
+        return self._setup("modelsim", library_file_name="libvunit_python_bridge_fli.so")
 
     def _ffi_text(self, bridge):
         for path in bridge.vhdl_files:
@@ -377,42 +369,42 @@ class TestBridgePackageSubstitution(unittest.TestCase):
         return ""
 
     def test_generated_package_is_the_private_bridge_package(self):
-        text = self._ffi_text(self._setup(_FakeSimulator("nvc")))
+        text = self._ffi_text(self._setup("nvc"))
         self.assertIn("package python_bridge_pkg is", text)
         self.assertIn("package body python_bridge_pkg is", text)
 
     def test_exports_match_the_native_library(self):
-        text = self._ffi_text(self._setup(_FakeSimulator("nvc")))
+        text = self._ffi_text(self._setup("nvc"))
         declared = set(re.findall(r'VHPIDIRECT \S+ (\w+)"', text))
         self.assertEqual(declared, set(EXPECTED_EXPORTS))
 
     def test_token_is_library_file_name_for_nvc(self):
-        bridge = self._setup(_FakeSimulator("nvc"))
+        bridge = self._setup("nvc")
         text = self._ffi_text(bridge)
         self.assertIn('"VHPIDIRECT libvunit_python_bridge.so vpy_begin"', text)
 
     def test_token_is_library_file_name_for_ghdl_mcode(self):
-        bridge = self._setup(_FakeSimulator("ghdl", backend="mcode"))
+        bridge = self._setup("ghdl", backend="mcode")
         text = self._ffi_text(bridge)
         self.assertIn('"VHPIDIRECT libvunit_python_bridge.so vpy_begin"', text)
 
     def test_token_is_library_file_name_for_ghdl_llvm_jit(self):
-        bridge = self._setup(_FakeSimulator("ghdl", backend="llvm-jit"))
+        bridge = self._setup("ghdl", backend="llvm-jit")
         text = self._ffi_text(bridge)
         self.assertIn('"VHPIDIRECT libvunit_python_bridge.so vpy_begin"', text)
 
     def test_token_is_link_flag_for_ghdl_llvm(self):
-        bridge = self._setup(_FakeSimulator("ghdl", backend="llvm"))
+        bridge = self._setup("ghdl", backend="llvm")
         text = self._ffi_text(bridge)
         self.assertIn('"VHPIDIRECT -lvunit_python_bridge vpy_begin"', text)
 
     def test_token_is_link_flag_for_ghdl_gcc(self):
-        bridge = self._setup(_FakeSimulator("ghdl", backend="gcc"))
+        bridge = self._setup("ghdl", backend="gcc")
         text = self._ffi_text(bridge)
         self.assertIn('"VHPIDIRECT -lvunit_python_bridge vpy_begin"', text)
 
     def test_no_remaining_placeholder(self):
-        for bridge in (self._setup(_FakeSimulator("nvc")), self._fli_setup()):
+        for bridge in (self._setup("nvc"), self._fli_setup()):
             text = self._ffi_text(bridge)
             self.assertNotIn("{library}", text)
             self.assertNotIn("{foreign:vpy_", text)
@@ -435,28 +427,33 @@ class TestBridgePackageSubstitution(unittest.TestCase):
     def test_fli_library_is_the_fli_variant(self):
         with mock.patch("vunit_python_bridge.bridge.prepare_library") as prepare_mock:
             prepare_mock.return_value = self.tempdir / "cache" / "libvunit_python_bridge_fli.so"
-            bridge_setup.setup(self.tempdir / "out", _FakeSimulator("modelsim", prefix="/sim/bin"), self.run_script)
+            bridge_setup.setup(self.tempdir / "out", self.run_script, "modelsim", "/sim/bin")
         # The simulator prefix selects the FLI variant of the library.
         self.assertEqual(prepare_mock.call_args.args[1], Path("/sim/bin"))
+
+    def test_fli_without_a_simulator_prefix_raises(self):
+        # The FLI variant is built against the simulator installation, so there has to be one.
+        with self.assertRaisesRegex(RuntimeError, "it was not found"):
+            bridge_setup.setup(self.tempdir / "out", self.run_script, "modelsim", None)
 
     def test_no_simulator_prefix_for_vhpidirect(self):
         with mock.patch("vunit_python_bridge.bridge.prepare_library") as prepare_mock:
             prepare_mock.return_value = self.tempdir / "cache" / "libvunit_python_bridge.so"
-            bridge_setup.setup(self.tempdir / "out", _FakeSimulator("nvc"), self.run_script)
+            bridge_setup.setup(self.tempdir / "out", self.run_script, "nvc", "/sim/bin")
         self.assertIsNone(prepare_mock.call_args.args[1])
 
     def test_unsupported_simulator_raises(self):
         with self.assertRaisesRegex(RuntimeError, "NVC, GHDL or Questa/ModelSim"):
-            self._setup(_FakeSimulator("rivierapro"))
+            self._setup("rivierapro")
 
     def test_all_vhpidirect_tokens_fit_ghdl_limit(self):
-        for simulator in (
-            _FakeSimulator("nvc"),
-            _FakeSimulator("ghdl", backend="mcode"),
-            _FakeSimulator("ghdl", backend="llvm"),
-            _FakeSimulator("ghdl", backend="gcc"),
+        for simulator_name, backend in (
+            ("nvc", None),
+            ("ghdl", "mcode"),
+            ("ghdl", "llvm"),
+            ("ghdl", "gcc"),
         ):
-            bridge = self._setup(simulator)
+            bridge = self._setup(simulator_name, backend)
             text = self._ffi_text(bridge)
             tokens = re.findall(r'VHPIDIRECT\s+(\S+)\s+\S+"', text)
             self.assertTrue(tokens, "no VHPIDIRECT tokens found")
@@ -481,7 +478,7 @@ class TestPosixBuildAndCache(unittest.TestCase):
         self.run_script = _write_run_script(self.tempdir / "run.py")
 
     def _setup(self, output_path=None):
-        return bridge_setup.setup(output_path or self.tempdir / "out", None, self.run_script)
+        return bridge_setup.setup(output_path or self.tempdir / "out", self.run_script)
 
     def test_first_setup_compiles_and_names_library(self):
         bridge = self._setup()
@@ -704,7 +701,7 @@ class TestConfigFile(unittest.TestCase):
             run_script = _write_run_script(tempdir / "run.py")
             fake_library_file = tempdir / "cache" / "libvunit_python_bridge.so"
             with mock.patch("vunit_python_bridge.bridge.prepare_library", return_value=fake_library_file):
-                bridge_setup.setup(tempdir / "out", None, run_script)
+                bridge_setup.setup(tempdir / "out", run_script)
             config = (fake_library_file.parent / bridge_setup.CONFIG_FILE_NAME).read_text(encoding="utf-8")
             keys = dict(line.split("=", 1) for line in config.splitlines())
             self.assertEqual(keys["run_script_dir"], str(tempdir.resolve()))
@@ -827,7 +824,7 @@ class TestSimulatorHooks(unittest.TestCase):
         A Questa/ModelSim interface and the vsim help output the hook asks it for.
         """
         simulator = mock.Mock()
-        simulator.find_prefix.return_value = prefix
+        simulator.prefix = prefix
         simulator.get_env.return_value = None
         return simulator, mock.patch(
             "vunit_python_bridge.simulator_hooks.subprocess.run",
@@ -921,49 +918,46 @@ class TestForeignApplicationBuild(unittest.TestCase):
     The VHPI application is built under the output path once and rebuilt when its inputs change.
     """
 
-    @staticmethod
-    def _simulator(prefix):
-        simulator = mock.Mock()
-        simulator.name = "rivierapro"
-        simulator.find_prefix.return_value = str(prefix)
-        return simulator
-
     def test_builds_once_and_rebuilds_when_the_fingerprint_changes(self):
         with create_tempdir() as tempdir:
             output_path = Path(tempdir) / "out"
-            simulator = self._simulator(Path(tempdir) / "rivierapro" / "bin")
+            prefix = str(Path(tempdir) / "rivierapro" / "bin")
             target = output_path / "rivierapro" / "libraries" / "python.dll"
 
             def fake_build(target, sources, simulator_prefix):  # pylint: disable=unused-argument
                 target.write_text("built", encoding="utf-8")
 
             with mock.patch.object(foreign_application, "_build_vhpi", side_effect=fake_build) as build:
-                foreign_application.setup_vhpi_application(output_path, simulator)
-                foreign_application.setup_vhpi_application(output_path, simulator)
+                foreign_application.setup_vhpi_application(output_path, "rivierapro", prefix)
+                foreign_application.setup_vhpi_application(output_path, "rivierapro", prefix)
             self.assertEqual(build.call_count, 1)
             self.assertTrue(target.exists())
             self.assertTrue(target.with_suffix(".dll.fingerprint").exists())
 
             # Another simulator installation changes the fingerprint
-            other = self._simulator(Path(tempdir) / "other" / "bin")
+            other = str(Path(tempdir) / "other" / "bin")
             with mock.patch.object(foreign_application, "_build_vhpi", side_effect=fake_build) as build:
-                foreign_application.setup_vhpi_application(output_path, other)
+                foreign_application.setup_vhpi_application(output_path, "rivierapro", other)
             self.assertEqual(build.call_count, 1)
 
             # A missing library is rebuilt even with a matching fingerprint
             target.unlink()
             with mock.patch.object(foreign_application, "_build_vhpi", side_effect=fake_build) as build:
-                foreign_application.setup_vhpi_application(output_path, other)
+                foreign_application.setup_vhpi_application(output_path, "rivierapro", other)
             self.assertEqual(build.call_count, 1)
 
     def test_failed_build_leaves_no_fingerprint(self):
         with create_tempdir() as tempdir:
             output_path = Path(tempdir) / "out"
-            simulator = self._simulator(Path(tempdir) / "rivierapro" / "bin")
+            prefix = str(Path(tempdir) / "rivierapro" / "bin")
             with mock.patch.object(foreign_application, "_build_vhpi", side_effect=RuntimeError("boom")):
                 with self.assertRaises(RuntimeError):
-                    foreign_application.setup_vhpi_application(output_path, simulator)
+                    foreign_application.setup_vhpi_application(output_path, "rivierapro", prefix)
             self.assertFalse(list((output_path / "rivierapro" / "libraries").glob("*.fingerprint")))
+
+    def test_a_missing_simulator_installation_is_reported(self):
+        with self.assertRaisesRegex(RuntimeError, "it was not found"):
+            foreign_application.setup_vhpi_application(Path("/out"), "rivierapro", None)
 
 
 if __name__ == "__main__":
