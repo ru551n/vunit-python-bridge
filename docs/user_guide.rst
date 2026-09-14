@@ -3,11 +3,11 @@
 Calling Python from VHDL
 ========================
 
-VUnit can embed a Python interpreter in the simulator so that VHDL testbenches
-can execute Python code and call Python functions, for example reference
-models written with NumPy. The VHDL API, ``python_pkg``/``python_context``, is
-enabled with :meth:`add_python() <vunit.ui.VUnit.add_python>`, after
-:meth:`add_vhdl_builtins() <vunit.ui.VUnit.add_vhdl_builtins>`:
+``vunit-python-bridge`` is a VUnit package that embeds a Python interpreter in
+the simulator so that VHDL testbenches can execute Python code and call Python
+functions, for example reference models written with NumPy. The VHDL API,
+``python_pkg``/``python_context``, is compiled into the ``python_bridge``
+library and is added to a project with ``add_package()``:
 
 .. code-block:: python
 
@@ -15,7 +15,7 @@ enabled with :meth:`add_python() <vunit.ui.VUnit.add_python>`, after
 
     vu = VUnit.from_argv()
     vu.add_vhdl_builtins()
-    vu.add_python()
+    vu.add_package("vunit-python-bridge")
 
     lib = vu.add_library("lib")
     lib.add_source_files("*.vhd")
@@ -29,7 +29,9 @@ become available through ``python_context``:
 
     library vunit_lib;
     context vunit_lib.vunit_context;
-    context vunit_lib.python_context;
+
+    library python_bridge;
+    context python_bridge.python_context;
 
     ...
 
@@ -39,12 +41,11 @@ become available through ``python_context``:
 Requirements
 ------------
 
+* A VUnit with support for packages and simulator hooks, see the README.
 * NVC, GHDL or Questa/ModelSim, through the VUnit Python bridge described
   below, or Riviera-PRO/Active-HDL (VHPI) through the VHPI application, which
-  :meth:`add_python() <vunit.ui.VUnit.add_python>` builds in the same way, see
-  :ref:`python_bridge:other_simulators`. Any other simulator, or calling
-  :meth:`add_python() <vunit.ui.VUnit.add_python>` before
-  :meth:`add_vhdl_builtins() <vunit.ui.VUnit.add_vhdl_builtins>`, raises a
+  the package builds in the same way, see
+  :ref:`python_bridge:other_simulators`. Any other simulator raises a
   ``RuntimeError``.
 * VHDL-2008 or later.
 * CPython 3.10 or later with the standard (GIL) build. Free-threaded builds
@@ -64,8 +65,8 @@ The simulator runs Python in the same environment as VUnit itself, including
 an active virtual environment and its installed packages.
 
 A missing prerequisite, for example a missing C compiler or missing Python
-headers, is reported by :meth:`add_python() <vunit.ui.VUnit.add_python>` as an
-``ERROR`` explaining what to install, after which VUnit exits with code 1.
+headers, is reported when the package is added as an ``ERROR`` explaining what
+to install, after which VUnit exits with code 1.
 
 .. _python_bridge:setup_and_cleanup:
 
@@ -122,8 +123,9 @@ Since ``session`` comes after up to 10 positional arguments in ``call``, it is
 normally given by name, as above. Both sessions in the example can define
 ``model`` without interfering with each other.
 
-The name of a session is a VUnit :ref:`identity <id_user_guide>` under
-``vunit_lib:python``, the identity of ``python_logger``, and ``name(session)``
+The name of a session is a VUnit `identity
+<https://vunit.github.io/id/user_guide.html>`__ under
+``python_bridge:python``, the identity of ``python_logger``, and ``name(session)``
 returns it. Two sessions made from the same name are the same session, so a
 session does not have to be passed around to be used in several places.
 
@@ -320,8 +322,8 @@ happen when the logger is mocked and the simulation continues:
 
 .. code-block:: text
 
-    FAILURE - vunit_lib:python - arg cannot convert 'X'; expected '0', '1', 'L' or 'H'
-    FAILURE - vunit_lib:python - eval("model(__vunit__.error("arg cannot convert 'X'; ..."))") failed:
+    FAILURE - python_bridge:python - arg cannot convert 'X'; expected '0', '1', 'L' or 'H'
+    FAILURE - python_bridge:python - eval("model(__vunit__.error("arg cannot convert 'X'; ..."))") failed:
     Traceback (most recent call last):
       ...
     RuntimeError: arg cannot convert 'X'; expected '0', '1', 'L' or 'H'
@@ -421,7 +423,7 @@ Without an explicit name, the module is named after the run script's file
 name (without extension), so the run script is normally named ``run.py``.
 Because the run script is imported as a module, it must be import-safe: code
 that is only meant to run when the script is invoked directly (typically the
-call to :meth:`vu.main() <vunit.ui.VUnit.main>`) must be behind
+call to ``vu.main()``) must be behind
 ``if __name__ == "__main__":``; a run script without such a guard is
 rejected before it is imported. Like the other operations, it takes an
 optional trailing :ref:`session <python_bridge:sessions>` parameter.
@@ -475,14 +477,14 @@ Errors
 
 Python exceptions, syntax errors, type errors and undefined names are
 reported as failures on the ``python_logger`` logger (named
-``vunit_lib:python``), including the Python traceback. The test fails and
+``python_bridge:python``), including the Python traceback. The test fails and
 stops like for any other failure. The logger can be mocked to test error
 handling; when mocked, ``eval``/``call`` return a default value (``0``,
 ``0.0``, ``""`` or an empty vector, depending on the type) after the failure.
 
 .. code-block:: text
 
-    FAILURE - vunit_lib:python - eval("1 / 0") failed:
+    FAILURE - python_bridge:python - eval("1 / 0") failed:
     Traceback (most recent call last):
       File "<eval #3>", line 1, in <module>
         1 / 0
@@ -584,13 +586,13 @@ Other simulators
 -----------------
 
 Riviera-PRO/Active-HDL (VHPI) implement ``python_ffi_pkg`` with a VHPI
-application, built from the C sources in :vunit_file:`vunit/vhdl/python/src
-<vunit/vhdl/python/src>` with their ``ccomp`` driver. :meth:`add_python()
-<vunit.ui.VUnit.add_python>` builds the application under the output path
-(``<output path>/<simulator>/libraries``) the first time it is called and
-rebuilds it when the sources, the Python running VUnit or the simulator
-installation change, so a run script needs nothing beyond :meth:`add_python()
-<vunit.ui.VUnit.add_python>`.
+application, built from the C sources in `src/vunit_python_bridge/vhdl/src
+<https://github.com/ru551n/vunit-python-bridge/tree/main/src/vunit_python_bridge/vhdl/src>`__
+with their ``ccomp`` driver. The package builds the application under the
+output path (``<output path>/<simulator>/libraries``) the first time it is
+added and rebuilds it when the sources, the Python running VUnit or the
+simulator installation change, so a run script needs nothing beyond
+``add_package()``.
 
 This application differs from the Python bridge in a few ways: only the
 default session exists, the operations implemented by the bridge
@@ -600,8 +602,9 @@ or Questa, a Python error stops the simulation with the message printed by the
 application rather than through ``python_logger``, and ``real`` values outside
 the single precision float range are rejected.
 
-See :vunit_example:`➚ examples/vhdl/embedded_python <vhdl/embedded_python>` for
-a complete example covering all three simulator families.
+See `➚ examples/embedded_python
+<https://github.com/ru551n/vunit-python-bridge/tree/main/examples/embedded_python>`__
+for a complete example covering all three simulator families.
 
 Its ``tb_example.vhd`` has a test case for each part of the API: ``exec`` and
 ``eval`` with the types they convert, calls with positional, keyword and group
@@ -614,37 +617,36 @@ Python model failing with ``python_logger`` mocked. Its last test case drives
 ``python_model``, a verification component whose behaviour is the Python
 function in ``python_model.py`` rather than VHDL.
 
-.. automodule:: vunit.python_bridge.foreign_application
-
 .. _python_bridge:native:
 
 How it works (NVC, GHDL and Questa)
 ------------------------------------
 
 For NVC, GHDL and Questa, the interpreter is embedded in the simulator process
-by a small C library, the VUnit Python bridge (:vunit_file:`vunit/python_bridge/native
-<vunit/python_bridge/native>`). NVC and GHDL call it through VHPIDIRECT;
-Questa/ModelSim calls it through the FLI, using the front end in
-:vunit_file:`native/fli.c <vunit/python_bridge/native/fli.c>` that converts the
-FLI parameters of one foreign subprogram per entry point. The generated VHDL
+by a small C library, the VUnit Python bridge (`src/vunit_python_bridge/native
+<https://github.com/ru551n/vunit-python-bridge/tree/main/src/vunit_python_bridge/native>`__).
+NVC and GHDL call it through VHPIDIRECT; Questa/ModelSim calls it through the
+FLI, using the front end in `native/fli.c
+<https://github.com/ru551n/vunit-python-bridge/blob/main/src/vunit_python_bridge/native/fli.c>`__
+that converts the FLI parameters of one foreign subprogram per entry point. The generated VHDL
 and everything above it is the same for all three. The interpreter is started
 on first use, is never restarted within a simulation, and uses no signal
 handlers of its own.
 
 Linux
   The bridge is compiled from source against the Python running VUnit the
-  first time :meth:`add_python() <vunit.ui.VUnit.add_python>` is called, and
-  cached in ``<output path>/python_bridge``. It is rebuilt automatically when
-  the source, the Python version or the Python installation changes. For
-  Questa the FLI front end is compiled in too, against the ``mti.h`` of the
-  simulator, and the simulator installation is part of the cache key. VUnit
-  ships no prebuilt Linux library.
+  first time the package is added, and cached in
+  ``<output path>/python_bridge``. It is rebuilt automatically when the
+  source, the Python version or the Python installation changes. For Questa
+  the FLI front end is compiled in too, against the ``mti.h`` of the
+  simulator, and the simulator installation is part of the cache key. The
+  package ships no prebuilt Linux library.
 
 Windows
-  For NVC and GHDL, VUnit ships DLLs built with MSVC for each supported Python
-  minor version (``vunit/python_bridge/bin``). The matching DLL is copied to
-  the output path and nothing is compiled. A development checkout of VUnit
-  does not contain the DLLs; they can be built with
+  For NVC and GHDL, the package ships DLLs built with MSVC for each supported
+  Python minor version (``src/vunit_python_bridge/bin``). The matching DLL is
+  copied to the output path and nothing is compiled. A development checkout of
+  the package does not contain the DLLs; they can be built with
   ``tools/build_python_bridge.py`` from an MSVC developer prompt. For Questa
   the library must be linked against the simulator's ``mtipli``, so it is
   built on first use with the MinGW GCC bundled with Questa, against the
@@ -656,11 +658,11 @@ Stable ABI since embedding the interpreter in the environment VUnit runs in
 requires the ``PyConfig`` initialization API, which is not part of the
 limited API.
 
-VUnit makes the simulator find the library automatically. NVC is given a
-``--load`` option. GHDL gets the library directory in its dynamic library
-search path, plus a linker search path for the ahead-of-time compiled llvm
-and gcc backends. The FLI attributes generated for Questa name the library by
-absolute path, and the vsim processes VUnit starts are given
+The package registers simulator hooks that make the simulator find the
+library automatically. NVC is given a ``--load`` option. GHDL gets the library
+directory in its dynamic library search path, plus a linker search path for
+the ahead-of-time compiled llvm and gcc backends. The FLI attributes generated
+for Questa name the library by absolute path, and ``vsim`` is given
 ``-noautoldlibpath`` on Linux so that the C++ runtime Questa bundles, which is
 often older than the one the Python extension modules of the environment
 (NumPy) were built against, does not take precedence over the one of the

@@ -1,7 +1,7 @@
 name: 'python bridge dlls'
 
-# Builds the prebuilt Windows DLLs of the VHDL Python bridge with MSVC, one per
-# CPython version. Called by python_bridge.yml and by push.yml for releases.
+# Builds the prebuilt Windows DLLs of the VUnit Python bridge with MSVC, one
+# per CPython version. Called by python_bridge.yml and by the release workflow.
 
 on:
   workflow_call:

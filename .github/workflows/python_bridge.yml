@@ -1,9 +1,11 @@
 name: 'python bridge'
 
-# Tests of the VHDL Python integration, add_python(), in the environments
-# push.yml does not provide: CPython from python.org, on Linux
-# (bridge compiled on first use) and Windows (prebuilt MSVC DLLs), and the
-# content of the package.
+# Tests of the vunit-python-bridge package on CPython from python.org: Linux
+# and macOS (bridge compiled on first use), Windows (prebuilt MSVC DLLs), the
+# Python unit tests, and the content of the distribution.
+#
+# VUnit is installed from the branch carrying the package support (PR #1221)
+# until it is part of a VUnit release.
 
 on:
   push:
@@ -56,8 +58,6 @@ jobs:
 
     - name: '🧰 Checkout'
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: '🐍 Setup Python'
       uses: actions/setup-python@v6
@@ -94,17 +94,21 @@ jobs:
     # outside the checkout, so nothing built can end up in the tree. The space
     # in the path is deliberate: the bridge builds command lines and simulator
     # options from these paths.
-    - name: '🐍 Install VUnit in a virtual environment'
+    - name: '🐍 Install the package in a virtual environment'
       run: |
         python -m venv "$RUNNER_TEMP/venv with space"
         echo "$RUNNER_TEMP/venv with space/bin" >> "$GITHUB_PATH"
-        "$RUNNER_TEMP/venv with space/bin/pip" install -e . --progress-bar off
+        "$RUNNER_TEMP/venv with space/bin/pip" install "vunit_hdl @ git+https://github.com/ru551n/vunit.git@feature/package-setup-hooks" --progress-bar off
+        "$RUNNER_TEMP/venv with space/bin/pip" install -e . pytest --progress-bar off
+
+    - name: '🚧 Python unit tests'
+      run: python -m pytest tests/test_python_bridge.py
 
     - name: '🚧 Feature tests'
-      run: python vunit/vhdl/python/run.py -p 4 -o "$RUNNER_TEMP/out dir"
+      run: python tests/run.py -p 4 -o "$RUNNER_TEMP/out dir"
 
     - name: '🚧 Example'
-      run: python examples/vhdl/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
+      run: python examples/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
 
 #
 # Windows, prebuilt MSVC DLLs
@@ -128,14 +132,12 @@ jobs:
 
     - name: '🧰 Checkout'
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: '📥 Download bridge DLLs'
       uses: actions/download-artifact@v4
       with:
         name: python-bridge-dlls
-        path: vunit/python_bridge/bin
+        path: src/vunit_python_bridge/bin
 
     - name: '🐍 Setup Python'
       uses: actions/setup-python@v6
@@ -159,20 +161,21 @@ jobs:
         backend: mcode
 
     # Same as on Linux: outside the checkout, with a space in the path
-    - name: '🐍 Install VUnit in a virtual environment'
+    - name: '🐍 Install the package in a virtual environment'
       run: |
         python -m venv "$RUNNER_TEMP/venv with space"
         echo "$RUNNER_TEMP/venv with space/Scripts" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/venv with space/Scripts/pip" install "vunit_hdl @ git+https://github.com/ru551n/vunit.git@feature/package-setup-hooks" --progress-bar off
         "$RUNNER_TEMP/venv with space/Scripts/pip" install -e . --progress-bar off
 
     # No compiler on PATH: the prebuilt DLLs must be used
     - name: '🚧 Feature tests'
       run: |
         ! command -v cl
-        python vunit/vhdl/python/run.py -p 4 -o "$RUNNER_TEMP/out dir"
+        python tests/run.py -p 4 -o "$RUNNER_TEMP/out dir"
 
     - name: '🚧 Example'
-      run: python examples/vhdl/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
+      run: python examples/embedded_python/run.py -p 4 --without-attributes .optional_deps --without-attributes .expected_failure
 
 #
 # Packaging, sources and DLLs included, no Linux binaries
@@ -186,33 +189,32 @@ jobs:
 
     - name: '🧰 Checkout'
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: '📥 Download bridge DLLs'
       uses: actions/download-artifact@v4
       with:
         name: python-bridge-dlls
-        path: vunit/python_bridge/bin
+        path: src/vunit_python_bridge/bin
 
     - name: '🐍 Setup Python'
       uses: actions/setup-python@v6
       with:
         python-version: '3.13'
 
-    - name: '📦 Build sdist'
+    - name: '📦 Build sdist and wheel'
       run: |
-        pip install -U setuptools wheel --progress-bar off
-        python setup.py sdist
+        pip install -U build --progress-bar off
+        python -m build
 
-    # Sources of every kind, the five DLLs, no Linux binary
-    - name: '🔍 Check sdist content'
+    # Sources of every kind, the manifest, the five DLLs, no Linux binary
+    - name: '🔍 Check distribution content'
       run: |
         tar tzf dist/*.tar.gz > content.txt
-        for file in python_bridge/runtime.py python_bridge/native/bridge.h vhdl/python/src/python_bridge_pkg.vhd.in \
-                    vhdl/python/src/python_pkg.vhd vhdl/python/src/python_pkg_vhpi.c \
-                    python_bridge/foreign_application.py; do
-          grep -q "vunit/$file\$" content.txt || { echo "missing $file"; exit 1; }
+        unzip -l dist/*.whl | awk '{print $4}' >> content.txt
+        for file in vunit_pkg.toml runtime.py native/bridge.h vhdl/src/python_bridge_pkg.vhd.in \
+                    vhdl/src/python_pkg.vhd vhdl/src/python_pkg_vhpi.c vhdl/src/python_context.vhd \
+                    foreign_application.py simulator_hooks.py; do
+          grep -q "vunit_python_bridge/$file\$" content.txt || { echo "missing $file"; exit 1; }
         done
-        test "$(grep -c 'vunit/python_bridge/bin/vunit_python_bridge-cp3[0-9]*-win_amd64.dll$' content.txt)" = 5
+        test "$(grep -c 'vunit_python_bridge/bin/vunit_python_bridge-cp3[0-9]*-win_amd64.dll$' content.txt)" = 10
         ! grep -q '\.so$' content.txt
