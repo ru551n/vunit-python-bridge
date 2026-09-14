@@ -5,6 +5,7 @@
 # Copyright (c) 2014-2026, Lars Asplund lars.anders.asplund@gmail.com
 
 [package]
+# The VUnit adding packages and simulator hooks, VUnit/vunit#1221
 requires-vunit = ">=5.0.0.dev12"
 requires-vhdl = ">=2008"
 library = "python_bridge"

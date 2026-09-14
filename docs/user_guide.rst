@@ -661,12 +661,17 @@ limited API.
 The package registers simulator hooks that make the simulator find the
 library automatically. NVC is given a ``--load`` option. GHDL gets the library
 directory in its dynamic library search path, plus a linker search path for
-the ahead-of-time compiled llvm and gcc backends. The FLI attributes generated
-for Questa name the library by absolute path, and ``vsim`` is given
-``-noautoldlibpath`` on Linux so that the C++ runtime Questa bundles, which is
-often older than the one the Python extension modules of the environment
-(NumPy) were built against, does not take precedence over the one of the
-system. No simulator options need to be set by the user.
+the ahead-of-time compiled llvm and gcc backends, which the hook recognizes
+from the ``backend`` of the GHDL interface it is called with. The FLI
+attributes generated for Questa name the library by absolute path, and the
+``vsim`` process VUnit starts is given ``-noautoldlibpath`` on Linux so that
+the C++ runtime Questa bundles, which is often older than the one the Python
+extension modules of the environment (NumPy) were built against, does not take
+precedence over the one of the system. That option is set up when the process
+starts, so it has to go on the command line of the process rather than on the
+``vsim`` command of the do-file VUnit generates, and it is only passed to a
+``vsim`` listing it in ``vsim -help all``. No simulator options need to be set
+by the user.
 
 Tested configurations
 ~~~~~~~~~~~~~~~~~~~~~~

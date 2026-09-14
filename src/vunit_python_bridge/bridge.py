@@ -40,20 +40,15 @@ GHDL_LINKING_BACKENDS = ("llvm", "gcc")
 # {foreign:<entry point>} placeholder of the bridge package template
 FOREIGN_PATTERN = re.compile(r"\{foreign:(\w+)\}")
 
+
 class PythonBridge:
     """
     A prepared bridge: native library, its configuration and the generated VHDL.
     """
 
-    def __init__(
-        self,
-        library_file: Path,
-        vhdl_files: List[Path],
-        ghdl_backend: Optional[str] = None,
-    ) -> None:
+    def __init__(self, library_file: Path, vhdl_files: List[Path]) -> None:
         self.library_file = library_file
         self.vhdl_files = vhdl_files
-        self.ghdl_backend = ghdl_backend
 
     @property
     def directory(self) -> Path:
@@ -99,7 +94,6 @@ def setup(output_path, simulator_class, run_script_path: Path) -> PythonBridge:
             bridge_package,
             VHDL_SOURCE_PATH / "python_ffi_pkg_bridge.vhd",
         ],
-        ghdl_backend=_ghdl_backend(simulator_class) if simulator_name == "ghdl" else None,
     )
 
 
@@ -172,6 +166,10 @@ def _write_if_changed(path: Path, text: str) -> None:
 def _ghdl_backend(simulator_class) -> Optional[str]:
     """
     Backend of the GHDL that will be used, None if not found.
+
+    The simulator interface has a backend property but no interface exists yet when the
+    generated VHDL is written, only the class, so the backend is determined the way the
+    interface determines it for itself.
     """
     prefix = simulator_class.find_prefix()
     if prefix is None:

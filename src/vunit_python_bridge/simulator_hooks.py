@@ -16,10 +16,17 @@ python_bridge_pkg.vhd name it by absolute path.
 """
 
 import os
+import subprocess
 import sys
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from .bridge import GHDL_LINKING_BACKENDS, PythonBridge
+
+# The vsim flag keeping the runtime libraries Questa bundles out of the dynamic library
+# search path, and the help category listing every vsim flag.
+NO_AUTO_LD_LIBRARY_PATH = "-noautoldlibpath"
+VSIM_HELP_ARGUMENTS = ("-help", "all")
 
 
 def register(context, bridge: PythonBridge) -> None:
@@ -32,7 +39,7 @@ def register(context, bridge: PythonBridge) -> None:
         elab_flags=_ghdl_elab_flags(bridge),
         run_env=_ghdl_run_env(bridge),
     )
-    context.register_simulator_hooks("modelsim", run_flags=_modelsim_run_flags(bridge))
+    context.register_simulator_hooks("modelsim", process_flags=_modelsim_process_flags())
 
 
 def _nvc_run_flags(bridge: PythonBridge):
@@ -48,11 +55,12 @@ def _nvc_run_flags(bridge: PythonBridge):
 
 def _ghdl_elab_flags(bridge: PythonBridge):
     """
-    GHDL elaboration flags. Only ahead-of-time linking backends need them.
+    GHDL elaboration flags. Only the backends linking the design ahead of time need them,
+    the others load the bridge at run time and are served by the run environment.
     """
 
-    def hook(simulator_interface) -> List[str]:  # pylint: disable=unused-argument
-        if bridge.ghdl_backend not in GHDL_LINKING_BACKENDS:
+    def hook(simulator_interface) -> List[str]:
+        if simulator_interface.backend not in GHDL_LINKING_BACKENDS:
             return []
         return [f"-Wl,-L{bridge.directory!s}"]
 
@@ -73,9 +81,9 @@ def _ghdl_run_env(bridge: PythonBridge):
     return hook
 
 
-def _modelsim_run_flags(bridge: PythonBridge):  # pylint: disable=unused-argument
+def _modelsim_process_flags():
     """
-    Flags for the vsim command of a Questa/ModelSim simulation.
+    Flags for the vsim process VUnit starts for a Questa/ModelSim simulation.
 
     Questa/ModelSim puts the directory of the C++ runtime it bundles first in
     LD_LIBRARY_PATH. That runtime is regularly older than the one the Python extension
@@ -83,12 +91,49 @@ def _modelsim_run_flags(bridge: PythonBridge):  # pylint: disable=unused-argumen
     against, and they then fail to load in the embedded interpreter. -noautoldlibpath
     turns that off, leaving the C++ runtime of the system to be found as usual.
 
-    Only relevant on Linux, where LD_LIBRARY_PATH decides this.
-    """
+    The flag is set up when the process starts, so it is only honoured on the command line
+    of the vsim process itself, not on the vsim command of the do-file VUnit generates.
 
-    def hook(simulator_interface) -> List[str]:  # pylint: disable=unused-argument
+    Only relevant on Linux, where LD_LIBRARY_PATH decides this, and only given to a vsim
+    that knows the flag.
+    """
+    known: Dict[Optional[str], bool] = {}
+
+    def hook(simulator_interface) -> List[str]:
         if not sys.platform.startswith("linux"):
             return []
-        return ["-noautoldlibpath"]
+
+        prefix = simulator_interface.find_prefix()
+        if prefix not in known:
+            known[prefix] = _vsim_knows_flag(prefix, simulator_interface)
+        if not known[prefix]:
+            return []
+
+        return [NO_AUTO_LD_LIBRARY_PATH]
 
     return hook
+
+
+def _vsim_knows_flag(prefix: Optional[str], simulator_interface) -> bool:
+    """
+    Whether the vsim of an installation lists -noautoldlibpath among its options.
+
+    Asking vsim rather than assuming keeps a version without the flag from failing to
+    start at all. An installation that cannot be asked is taken to know it, since the
+    flag is what makes the bridge usable there.
+    """
+    if prefix is None:
+        return True
+
+    try:
+        output = subprocess.run(
+            [str(Path(prefix) / "vsim"), *VSIM_HELP_ARGUMENTS],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=simulator_interface.get_env(),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+    return NO_AUTO_LD_LIBRARY_PATH in output.split()

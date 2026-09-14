@@ -132,8 +132,12 @@ class _FakeContext:
     def add_source_files(self, library_name, pattern, vhdl_standard=None):
         self.added_files += [(library_name, Path(item)) for item in pattern]
 
-    def register_simulator_hooks(self, simulator_name, *, elab_flags=None, run_flags=None, run_env=None):
-        self.hooks[simulator_name] = dict(elab_flags=elab_flags, run_flags=run_flags, run_env=run_env)
+    def register_simulator_hooks(
+        self, simulator_name, *, elab_flags=None, run_flags=None, process_flags=None, run_env=None
+    ):
+        self.hooks[simulator_name] = dict(
+            elab_flags=elab_flags, run_flags=run_flags, process_flags=process_flags, run_env=run_env
+        )
 
 
 class TestManifest(unittest.TestCase):
@@ -198,16 +202,6 @@ class TestPackageSetup(unittest.TestCase):
         simulator.supported_foreign_language_interfaces.return_value = flis
         return simulator
 
-    @staticmethod
-    def _simulator_without_flis(name):
-        """
-        A simulator interface of a VUnit that does not report its foreign language
-        interfaces, so the package has to know them by name.
-        """
-        simulator = mock.Mock(spec=["name", "find_prefix"])
-        simulator.name = name
-        return simulator
-
     def _added_names(self, context):
         return {path.name for _, path in context.added_files}
 
@@ -222,21 +216,6 @@ class TestPackageSetup(unittest.TestCase):
         # The message names the interfaces so a user knows what is supported.
         for interface in ("VHPI", "FLI", "VHPIDIRECT_NVC", "VHPIDIRECT_GHDL"):
             self.assertIn(interface, str(ctx.exception))
-
-    def test_interfaces_are_known_by_name_when_vunit_does_not_report_them(self):
-        for name, expected in (
-            ("nvc", {"VHPIDIRECT_NVC"}),
-            ("ghdl", {"VHPIDIRECT_GHDL"}),
-            ("modelsim", {"FLI"}),
-            ("rivierapro", {"VHPI"}),
-            ("activehdl", {"VHPI"}),
-        ):
-            self.assertEqual(
-                vunit_python_bridge._foreign_language_interfaces(  # pylint: disable=protected-access
-                    self._simulator_without_flis(name)
-                ),
-                expected,
-            )
 
     def test_vhpi_adds_python_pkg_vhpi_and_builds_the_application(self):
         simulator = self._simulator_with_flis("rivierapro", {"VHPI"})
@@ -313,7 +292,7 @@ class TestPackageSetup(unittest.TestCase):
         self.assertIsNotNone(context.hooks["nvc"]["run_flags"])
         self.assertIsNotNone(context.hooks["ghdl"]["elab_flags"])
         self.assertIsNotNone(context.hooks["ghdl"]["run_env"])
-        self.assertIsNotNone(context.hooks["modelsim"]["run_flags"])
+        self.assertIsNotNone(context.hooks["modelsim"]["process_flags"])
         # Questa finds the library by the absolute path in its FLI attributes
         self.assertIsNone(context.hooks["modelsim"]["run_env"])
 
@@ -800,13 +779,33 @@ class TestSimulatorHooks(unittest.TestCase):
     are given for a simulation of the project.
     """
 
-    def _hooks(self, library_file, ghdl_backend=None):
-        bridge = bridge_setup.PythonBridge(
-            library_file=library_file, vhdl_files=[], ghdl_backend=ghdl_backend
-        )
+    def _hooks(self, library_file):
+        bridge = bridge_setup.PythonBridge(library_file=library_file, vhdl_files=[])
         context = _FakeContext(None, Path("/out"), Path("/run.py"))
         simulator_hooks.register(context, bridge)
         return context.hooks
+
+    @staticmethod
+    def _ghdl(backend):
+        """
+        A GHDL interface as a hook gets it: it knows its own backend.
+        """
+        simulator = mock.Mock()
+        simulator.backend = backend
+        return simulator
+
+    @staticmethod
+    def _questa(prefix="/questa/bin", help_output=f"{simulator_hooks.NO_AUTO_LD_LIBRARY_PATH} Disable it"):
+        """
+        A Questa/ModelSim interface and the vsim help output the hook asks it for.
+        """
+        simulator = mock.Mock()
+        simulator.find_prefix.return_value = prefix
+        simulator.get_env.return_value = None
+        return simulator, mock.patch(
+            "vunit_python_bridge.simulator_hooks.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, stdout=help_output, stderr=""),
+        )
 
     def test_nvc_loads_the_library_at_run_time(self):
         library_file = Path("/some/dir/libvunit_python_bridge.so")
@@ -816,15 +815,15 @@ class TestSimulatorHooks(unittest.TestCase):
         self.assertIsNone(hooks["nvc"]["elab_flags"])
 
     def test_ghdl_elab_flags_empty_for_mcode_and_jit(self):
+        hooks = self._hooks(Path("/some/dir/libvunit_python_bridge.so"))
         for backend in ("mcode", "llvm-jit"):
-            hooks = self._hooks(Path("/some/dir/libvunit_python_bridge.so"), ghdl_backend=backend)
-            self.assertEqual(hooks["ghdl"]["elab_flags"](mock.Mock()), [], backend)
+            self.assertEqual(hooks["ghdl"]["elab_flags"](self._ghdl(backend)), [], backend)
 
     def test_ghdl_elab_flags_for_linking_backends(self):
         bridge_dir = Path("/some/dir")
+        hooks = self._hooks(bridge_dir / "libvunit_python_bridge.so")
         for backend in ("llvm", "gcc"):
-            hooks = self._hooks(bridge_dir / "libvunit_python_bridge.so", ghdl_backend=backend)
-            self.assertEqual(hooks["ghdl"]["elab_flags"](mock.Mock()), [f"-Wl,-L{bridge_dir!s}"], backend)
+            self.assertEqual(hooks["ghdl"]["elab_flags"](self._ghdl(backend)), [f"-Wl,-L{bridge_dir!s}"], backend)
 
     def test_ghdl_run_env_prepends_ld_library_path_without_mutating_input(self):
         bridge_dir = Path("/some/dir")
@@ -852,15 +851,42 @@ class TestSimulatorHooks(unittest.TestCase):
         self.assertEqual(result["PATH"], str(bridge_dir))
         self.assertNotIn("LD_LIBRARY_PATH", result)
 
-    def test_modelsim_run_flags_disable_the_bundled_cxx_runtime_on_linux(self):
+    def test_modelsim_gets_no_run_flags(self):
+        # -noautoldlibpath is only honoured on the command line of the vsim process
+        # VUnit starts, which is what process_flags extends.
         hooks = self._hooks(Path("/some/dir/libvunit_python_bridge_fli.so"))
-        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "linux"):
-            self.assertEqual(hooks["modelsim"]["run_flags"](mock.Mock()), ["-noautoldlibpath"])
+        self.assertIsNone(hooks["modelsim"]["run_flags"])
+        self.assertIsNone(hooks["modelsim"]["elab_flags"])
 
-    def test_modelsim_run_flags_empty_on_windows(self):
+    def test_modelsim_process_flags_disable_the_bundled_cxx_runtime_on_linux(self):
+        hooks = self._hooks(Path("/some/dir/libvunit_python_bridge_fli.so"))
+        simulator, help_patch = self._questa()
+        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "linux"), help_patch as run:
+            self.assertEqual(hooks["modelsim"]["process_flags"](simulator), ["-noautoldlibpath"])
+            # The answer of an installation is remembered, vsim is only asked once.
+            self.assertEqual(hooks["modelsim"]["process_flags"](simulator), ["-noautoldlibpath"])
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args[0][0][0], str(Path("/questa/bin/vsim")))
+
+    def test_modelsim_process_flags_empty_when_vsim_does_not_know_the_flag(self):
+        hooks = self._hooks(Path("/some/dir/libvunit_python_bridge_fli.so"))
+        simulator, help_patch = self._questa(help_output="-nothing -of -interest")
+        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "linux"), help_patch:
+            self.assertEqual(hooks["modelsim"]["process_flags"](simulator), [])
+
+    def test_modelsim_process_flags_kept_when_vsim_cannot_be_asked(self):
+        hooks = self._hooks(Path("/some/dir/libvunit_python_bridge_fli.so"))
+        simulator, _ = self._questa()
+        no_vsim = mock.patch("vunit_python_bridge.simulator_hooks.subprocess.run", side_effect=OSError("no vsim"))
+        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "linux"), no_vsim:
+            self.assertEqual(hooks["modelsim"]["process_flags"](simulator), ["-noautoldlibpath"])
+
+    def test_modelsim_process_flags_empty_on_windows(self):
         hooks = self._hooks(Path("/some/dir/vunit_python_bridge_fli.dll"))
-        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "win32"):
-            self.assertEqual(hooks["modelsim"]["run_flags"](mock.Mock()), [])
+        simulator, help_patch = self._questa()
+        with mock.patch("vunit_python_bridge.simulator_hooks.sys.platform", "win32"), help_patch as run:
+            self.assertEqual(hooks["modelsim"]["process_flags"](simulator), [])
+        run.assert_not_called()
 
 
 class TestForeignApplicationBuild(unittest.TestCase):

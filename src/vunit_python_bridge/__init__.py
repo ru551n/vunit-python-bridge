@@ -36,16 +36,6 @@ VHDL_PATH = Path(__file__).parent.resolve() / "vhdl" / "src"
 # Foreign language interfaces the package can be implemented with
 SUPPORTED_FOREIGN_LANGUAGE_INTERFACES = {"VHPI", "FLI", "VHPIDIRECT_NVC", "VHPIDIRECT_GHDL"}
 
-# The foreign language interface of a simulator, used when the simulator interface does not
-# report it itself with supported_foreign_language_interfaces().
-FOREIGN_LANGUAGE_INTERFACES = {
-    "nvc": {"VHPIDIRECT_NVC"},
-    "ghdl": {"VHPIDIRECT_GHDL"},
-    "modelsim": {"FLI"},
-    "rivierapro": {"VHPI"},
-    "activehdl": {"VHPI"},
-}
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -70,7 +60,7 @@ def setup(context):
             f"{', '.join(sorted(SUPPORTED_FOREIGN_LANGUAGE_INTERFACES))} but no simulator was found"
         )
 
-    supported = _foreign_language_interfaces(simulator_class)
+    supported = set(simulator_class.supported_foreign_language_interfaces())
     if not SUPPORTED_FOREIGN_LANGUAGE_INTERFACES & supported:
         raise RuntimeError(
             "The vunit-python-bridge package requires support for one of "
@@ -97,16 +87,3 @@ def setup(context):
     context.add_source_files(context.library.name, list(bridge.vhdl_files))
 
     simulator_hooks.register(context, bridge)
-
-
-def _foreign_language_interfaces(simulator_class):
-    """
-    The foreign language interfaces of a simulator.
-
-    VUnit reports them with supported_foreign_language_interfaces() when it knows them,
-    otherwise they are looked up by simulator name.
-    """
-    reported = getattr(simulator_class, "supported_foreign_language_interfaces", None)
-    if reported is not None:
-        return set(reported())
-    return FOREIGN_LANGUAGE_INTERFACES.get(simulator_class.name, set())
