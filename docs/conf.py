@@ -49,7 +49,7 @@ html_context = {
 # The release notes page, generated from release_notes/*.md, newest first
 _notes = ["Release notes", "=============", ""]
 for _path in sorted((ROOT / "release_notes").glob("*.md"), key=lambda path: Version(path.stem), reverse=True):
-    _title = _path.stem if Version(_path.stem) <= Version(release) else f"{_path.stem} (unreleased)"
+    _title = _path.stem if Version(_path.stem) <= Version(release) else "Unreleased"
     _notes += [_title, "-" * len(_title), "", f".. include:: ../release_notes/{_path.name}"]
     _notes += ["   :parser: myst_parser.sphinx_", ""]
 (ROOT / "docs" / "release_notes.rst").write_text("\n".join(_notes))
