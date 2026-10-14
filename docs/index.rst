@@ -43,6 +43,8 @@ Key features
   verification components alike.
 * :doc:`Python errors <errors>` are VUnit failures with the traceback, on a logger that a test can
   mock.
+* A complete :doc:`VHDL API reference <api/python_context>`, generated from the package
+  declarations.
 * No build step: the package builds the foreign language interface for the simulator itself, see
   :doc:`how_it_works`.
 
@@ -111,6 +113,14 @@ become available through ``python_context``:
    sessions
    python_files
    file_paths
+
+.. toctree::
+   :caption: VHDL API reference
+   :hidden:
+
+   api/python_context
+   api/python_ffi_pkg
+   api/python_pkg
 
 .. toctree::
    :caption: Simulators

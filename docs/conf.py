@@ -18,6 +18,7 @@ from packaging.version import Version
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "docs"))
+import vhdl_api  # noqa: E402
 
 project = "vunit-python-bridge"
 copyright = "2014-2026, Lars Asplund"  # pylint: disable=redefined-builtin
@@ -52,3 +53,5 @@ for _path in sorted((ROOT / "release_notes").glob("*.md"), key=lambda path: Vers
     _notes += [_title, "-" * len(_title), "", f".. include:: ../release_notes/{_path.name}"]
     _notes += ["   :parser: myst_parser.sphinx_", ""]
 (ROOT / "docs" / "release_notes.rst").write_text("\n".join(_notes))
+
+vhdl_api.write(ROOT / "docs" / "api")
