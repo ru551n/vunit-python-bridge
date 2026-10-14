@@ -7,3 +7,4 @@ __pycache__/
 /src/vunit_python_bridge/bin/
 vunit_out/
 /docs/release_notes.rst
+/docs/api/
