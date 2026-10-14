@@ -1,7 +1,8 @@
 name: 'docs'
 
 # Builds the documentation with warnings as errors, as Read the Docs does, and keeps the HTML
-# as an artifact. Read the Docs builds and publishes it, see .readthedocs.yaml.
+# as an artifact. A push to main triggers the Read the Docs build of latest, which publishes
+# it, see .readthedocs.yaml.
 
 on:
   push:
@@ -33,3 +34,17 @@ jobs:
       with:
         name: docs-html
         path: docs/_build/html
+
+  publish:
+    needs: docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'VUnit/vunit-python-bridge'
+    runs-on: ubuntu-24.04
+    name: '🚀 Read the Docs'
+    steps:
+
+    - name: '🚀 Trigger the build of latest'
+      env:
+        READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
+      run: |
+        curl --fail-with-body -X POST -H "Authorization: Token $READTHEDOCS_TOKEN" \
+          https://readthedocs.org/api/v3/projects/vunit-python-bridge/versions/latest/builds/
