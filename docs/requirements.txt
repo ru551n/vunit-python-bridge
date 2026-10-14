@@ -1,0 +1,2 @@
+# Pinned so that a new Sphinx release doesn't break the -W build.
+sphinx==9.1.0
