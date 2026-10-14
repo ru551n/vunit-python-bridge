@@ -1,8 +1,8 @@
 name: 'docs'
 
 # Builds the documentation with warnings as errors, as Read the Docs does, and keeps the HTML
-# as an artifact. A push to main triggers the Read the Docs build of latest, which publishes
-# it, see .readthedocs.yaml.
+# as an artifact. Read the Docs publishes it, see .readthedocs.yaml: a push to main builds
+# latest, and a release tag vX.Y.Z gets a version of its own and updates stable.
 
 on:
   push:
@@ -37,14 +37,31 @@ jobs:
 
   publish:
     needs: docs
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'VUnit/vunit-python-bridge'
+    if: >-
+      github.event_name == 'push' && github.repository == 'VUnit/vunit-python-bridge' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
     name: '🚀 Read the Docs'
+    env:
+      API: https://app.readthedocs.org/api/v3/projects/vunit-python-bridge
+      AUTH: 'Authorization: Token ${{ secrets.READTHEDOCS_TOKEN }}'
     steps:
 
-    - name: '🚀 Trigger the build of latest'
-      env:
-        READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
+    - name: '🚀 Build latest'
+      if: github.ref == 'refs/heads/main'
+      run: curl --fail-with-body -X POST -H "$AUTH" "$API/versions/latest/builds/"
+
+    # Read the Docs learns about the tag in the background, so wait for its version
+    - name: '🚀 Build the release and stable'
+      if: startsWith(github.ref, 'refs/tags/v')
       run: |
-        curl --fail-with-body -X POST -H "Authorization: Token $READTHEDOCS_TOKEN" \
-          https://readthedocs.org/api/v3/projects/vunit-python-bridge/versions/latest/builds/
+        curl --fail-with-body -X POST -H "$AUTH" "$API/sync-versions/"
+        for attempt in $(seq 30); do
+          curl --fail -s -o /dev/null -H "$AUTH" "$API/versions/$GITHUB_REF_NAME/" && break
+          [ "$attempt" = 30 ] && { echo "::error::Read the Docs has no version $GITHUB_REF_NAME"; exit 1; }
+          sleep 10
+        done
+        curl --fail-with-body -X PATCH -H "$AUTH" -H 'Content-Type: application/json' \
+          -d '{"active": true, "hidden": false}' "$API/versions/$GITHUB_REF_NAME/"
+        curl --fail-with-body -X POST -H "$AUTH" "$API/versions/$GITHUB_REF_NAME/builds/"
+        curl --fail-with-body -X POST -H "$AUTH" "$API/versions/stable/builds/"
