@@ -1,6 +1,6 @@
 # vunit-python-bridge
 
-[![Website](https://img.shields.io/readthedocs/vunit-python-bridge?label=website)](https://vunit-python-bridge.readthedocs.io)
+[![Documentation](https://img.shields.io/readthedocs/vunit-python-bridge?label=documentation)](https://vunit-python-bridge.readthedocs.io)
 [![Repository](https://img.shields.io/badge/github-VUnit%2Fvunit--python--bridge-blue?logo=github)](https://github.com/VUnit/vunit-python-bridge)
 [![PyPI](https://img.shields.io/pypi/v/vunit-python-bridge?label=pip%20install%20vunit-python-bridge&color=blue)](https://pypi.org/project/vunit-python-bridge/)
 [![Python versions](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.15-blue?logo=python&logoColor=white)](https://vunit-python-bridge.readthedocs.io/en/latest/requirements.html)

@@ -5,8 +5,8 @@ About vunit-python-bridge
 
 |docs| |repository| |pypi| |python| |license| |ci|
 
-.. |docs| image:: https://img.shields.io/readthedocs/vunit-python-bridge?label=website
-   :alt: Website
+.. |docs| image:: https://img.shields.io/readthedocs/vunit-python-bridge?label=documentation
+   :alt: Documentation
    :target: https://vunit-python-bridge.readthedocs.io
 .. |repository| image:: https://img.shields.io/badge/github-VUnit%2Fvunit--python--bridge-blue?logo=github
    :alt: Repository
